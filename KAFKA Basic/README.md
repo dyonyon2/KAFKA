@@ -1,0 +1,103 @@
+- Section 1 : 간단한 강의&KAFKA 소개
+- Section 2 : KAFKA 이론
+
+- Section 1
+	- 기존 데이터 전송 방식 : 소스 시스템 -> 타겟 시스템으로 데이터를 전달하는 형태.
+		- If 소스-타겟 쌍이 많아지면? : 정보 공유를 위해서는 모든 타겟 시스템에 데이터를 전송해야한다. =>  즉 데이터 통합을 위해 많은 어려움이 생긴다. (프로토콜, 데이터 형식 등이 상이하기 때문) => 소스 서비스의 부담이 증가한다.
+	- Source System 예시 : Website Events, Pricing Data, Transactions, User Interaction 등
+	- Target System 예시 : Database, Analytics, Email, Audit 등
+	- KAFKA란?
+		- LinkedIn에서 개발한 오픈소스이다.
+		- 분산형이고, 회복탄력성이 있는 아키텍쳐이며, 실패에 내성이 있다.
+		- 수평적 scalability에 좋으며, 빠른 처리량, 10ms 보다 작은 latency => 실시간 시스템
+		- 사용 사례
+			- Messaging System, Activity Tracking, Gather metrics&logs, Stream processing(Streams API), de-coupling of system dependencies, big data technology, Micro services pub/sub
+
+- Section 2
+	- KAFKA Topics & Partitions & Offset
+		- Topics
+			- 데이터 스트림(sequence of messages)이고, 토픽 이름으로 식별한다.
+			- 모든 메시지 형식을 지원한다. (Json, binary, text 등등)
+			- Topic을 query할 수는 없고, Producer&Consumer를 통해 데이터를 전송하고 읽는다.
+			- Topic은 immutable이다. 즉 파티션에 데이터가 작성된 이후 delete, update불가!
+		- Partitions and offsets
+			- 토픽은 파티션들로 분할된다. 
+			- 분할된 파티션에 메시지들이 쌓일 때, offset이라는 증가하는 고유 식별자를 가진다.
+				- 각 파티션마다 다른 Offset을 가지게 된다.
+		- ex. truck의 gps 
+			- 각각의 트럭이 20초마다 자신의 ID와 위치 정보를 담은 메시지를 카프카에 전송하여 truck_gps 토픽에 전송한다.
+			- 토픽이 10개의 파티션으로 구성된다.
+			- 트럭의 GPS 정보를 가져가서 사용하는 Consumer들이 존재한다. (Location Dashboard, Notification Service 등등)
+			=> 동일한 정보를 여러 서비스들이 consume 할 수 있다.
+		- ** 중요한 사항 **
+			- 데이터가 파티션에 작성되면 변경될 수 없다.
+			- 데이터는 일정 시간만 유지된다. (기본값 1주)
+			- Offset은 특정 파티션에만 의미가 있다. (파티션 0의 offset n이 파티션 1의 offset과는 연관이 없다.)
+			- 순서보장은 동일 파티션안에서만 보장된다!!!
+			- 특정 key가 없을 경우에, 메시지는 파티션들중 임의의 파티션에 배정되어 message가 저장될 것이다.
+			- 파티션의 개수는 원하는 만큼 설정할 수 있다. But 알맞는 파티션의 개수가 서비스의 특징, 환경에 따라 달라진다.
+ 	- Producer & Message Key & serialization
+ 		- Producer
+ 			- 토픽에(여러 파티션으로 구성된) 데이터를 write 하는 주체이다.
+ 			- 프로듀서는 어떤 파티션에 데이터를 작성해야하는지 안다.(Kafka broker가 알려줌)
+ 			- KAFKA Broker가 고장난 경우에는 Producer가 자동적으로 회복한다.
+ 			- 매커니즘에 따라 Data를 파티션에 분산해서 전송하기 때문에 Load balancing 된다.
+ 			- 프로듀서는 Message Key를 정할 수 있다. (String, number, binary 등등..)
+ 				- If key = null, 데이터는 Round Robin으로 전송된다. (0,1,2,0,1,2...)
+ 				- If key != null, 키에 따라서 파티션이 정해지며, 동일한 키를 공유하는 모든 메시지는 Hashing 기법에 의해 동일한 파티션에 전송된다.
+ 				=> Key를 지정할 때, 특정 값(key)에 대한 메시지 순서를 정해야한다.
+ 					- ex. Truck ID가 Key에 적합하다. 동일한 ID에 대한 순서가 보장되어야 의미있는 데이터가 된다.(GPS)
+	 	- KAKFA Message 구성
+	 		- Key, Value, Compression Type, Header(option), Partition+Offset, Timestamp 로 구성된다. 
+	 			- Compression Type은 none, gzip, snappy, lz4, zstd 등 압축 형식
+	 			- Header은 옵션이며, key-value 쌍으로 구성된다.
+	 	- KAFKA Message Serializer(직렬화)
+	 		- KAFKA는 프로듀서에게 바이트를 입력 받고 컨슈머에게 바이트를 전송한다. But 우리는 바이트 형식으로 Message를 만드는 것이 아니기 때문에, 메시지 직렬화가(데이터나 객체를 바이트로 변) 필요하다.
+	 		- 직렬화는 값과 키에만 사용된다.
+	 			- ex. key(Int) = 123 => KeySerializer = IntegerSerializer => 01110011(Binary)
+	 			- ex. value(String) = "hello world" => ValueSerializer = String Serializer => 00100110101001...(Binary)
+	 		- Common Serializers
+	 			- String, Int, Float, Avro, Protobuf, etc...
+	 	- How Message Key is hashing?
+	 		- KAFKA Partitioner이 메시지를 받아서 전송할 파티션을 결정한다.
+	 			- ex. 	(1) 프로듀서가 record를 send()
+	 					(2) 프로듀서 파티셔너 로직이 record를 확인하여 파티션 할당
+			- Key Hashing은 키 - 파티션의 매핑에 사용되며, 기본 KAFKA 파티셔너는 murmur2 알고리즘을 사용하여 Key를 Hashing한다.
+				-  Key의 Bytes를 확인하여 murmur2 알고리즘을 통해 파티션을 결정한다.
+	- Consumers & Deserialization
+		- Consumers
+			- 컨슈머는 토픽으로부터 PULL 방식으로 데이터를 읽는다.(KAFKA BROKER에게 데이터를 요청하고 응답으로 데이터를 받는 방식이다.)
+			=> 데이터를 컨슈머에게 푸싱하는 것은 KAFKA BROKER가 아닌 PULL Model이다.
+			- 컨슈머는 자동적으로 어떤 브로커에게서 데이터를 읽을지 알게되며, 브로커 고장시에 어떻게 회복할지 안다.
+			- 데이터는 각 파티션내의 작은 Offset부터 큰 Offset 순서로 데이터를 순서대로 읽는다.
+		- Deserialization
+			- 컨슈머는 카프카로부터 데이터를(바이트) 읽어서 객체나 데이터로 변환하는 역직렬화가 필요하다. 
+				- ex. key = 011101(Binary) => KeyDeserializer = IntegerDeserializer => 123(Key Object)
+	 			- ex. value = 1011011..(Binary) => ValueDeserializer = StringDeserializer => "hello world"(Value Object)
+ 			- Common Deserializers
+	 			- String, Int, Float, Avro, Protobuf, etc...
+	 	- *** 직렬화/역직렬화시에 데이터 타입이 변경되면 안된다!! => 타입 에러를 야기함 ***
+ 	- Consumer Groups & Consumer Offset
+ 		- Consumer Groups
+	 		- Consumer들은 Consumer 그룹 형태로 데이터를 읽는다.
+	 			- ex. Partition 5, Consumer Group 1, Cosumer 3 
+	 			- ex. Cosumer1(P0,P1), Cosumer2(P2,P3), Cosumer3(P4)
+	 			=> 컨슈머별로 각각 다른 파티션의 데이터를 읽는다.
+			- If 컨슈머 그룹내에 컨슈머 개수가 파티션 개수보다 많다면? => 초과된 개수만큼의 컨슈머는 비활성화된다.
+			- IF 하나의 토픽을 여러 컨슈머 그룹이 바라보고 있다면? => 문제 없다. 컨슈머 그룹별로 Offset이 다르니까
+			- *** 같은 컨슈머 그룹 내의 하나의 컨슈머는 하나의 파티션을 독점한다. 파티션의 개수가 부족하면 나머지 컨슈머는 비활성화된다. *** 
+			- 컨슈머 그룹은 Cosumer property인 group.id에 의해 식별된다
+		- Consumer Offset
+			- KAFKA는 컨슈머 그룹이 읽고 있는 Offset을 저장한다. => 이 offset이 저장되는 topic이 consumer_offsets 이다.
+			- 컨슈머 그룹내의 컨슈머가 데이터를 읽고, 주기적으로 Offset을 커밋하는데, 해당 Offset을 통해 데이터를 어디까지 성공적으로 읽었는지 확인한다. => 컨슈머 장애 해결
+			- Java Consumer는 자동적으로 at least once로 offset을 커밋한다.
+			- 커밋 방식에는 3가지 방법이 존재함
+				- At least once(usually preferred)
+					- 메세지가 처리된 뒤에 커밋되는 방식. 메시지 처리중 문제발생시 다시 읽음
+					- 이것은 메시지의 중복처리가 될 수 있다는 것이다.
+					=> KAFKA를 도입하는 시스템이 메시지의 재처리시 문제가 되는 시스템인지 확인해야함
+				- At most once
+					- 메시지를 받자마자 Offset을 커밋한다. 메시지 처리중 문제발생시 일부 메시지를 잃을 수 있다. 이미 메시지를 읽었다고 커밋하였기 때문.
+				- Exactly once
+					- Transactional API를 사용하거나, idempotent(멱등, 여러번 적용하더라도 결과가 달라지지 않는 성질 = 재처리해도 문제 없음) 컨슈머를 사용
+					
