@@ -1,7 +1,9 @@
 - Section 1 : 간단한 강의&KAFKA 소개
 - Section 2 : KAFKA 이론
- 
-- Section 1
+- Section 3 : KAFKA 시작하기
+
+
+- Section 1 : 간단한 강의&KAFKA 소개
 	- 기존 데이터 전송 방식 : 소스 시스템 -> 타겟 시스템으로 데이터를 전달하는 형태.
 		- If 소스-타겟 쌍이 많아지면? : 정보 공유를 위해서는 모든 타겟 시스템에 데이터를 전송해야한다. =>  즉 데이터 통합을 위해 많은 어려움이 생긴다. (프로토콜, 데이터 형식 등이 상이하기 때문) => 소스 서비스의 부담이 증가한다.
 	- Source System 예시 : Website Events, Pricing Data, Transactions, User Interaction 등
@@ -13,7 +15,7 @@
 		- 사용 사례
 			- Messaging System, Activity Tracking, Gather metrics&logs, Stream processing(Streams API), de-coupling of system dependencies, big data technology, Micro services pub/sub
 
-- Section 2
+- Section 2 : KAFKA 이론
 	- KAFKA Topics & Partitions & Offset
 		- Topics
 			- 데이터 스트림(sequence of messages)이고, 토픽 이름으로 식별한다.
@@ -100,4 +102,63 @@
 					- 메시지를 받자마자 Offset을 커밋한다. 메시지 처리중 문제발생시 일부 메시지를 잃을 수 있다. 이미 메시지를 읽었다고 커밋하였기 때문.
 				- Exactly once
 					- Transactional API를 사용하거나, idempotent(멱등, 여러번 적용하더라도 결과가 달라지지 않는 성질 = 재처리해도 문제 없음) 컨슈머를 사용
-					
+	- Broker & Topic
+		- Broker
+			- Broker = server이다. 메시지를 주고받기에 KAFKA에서는 Broker라 칭함.
+			- Kafka Cluster는 여러 Broker로 구성되고 Broker는 ID가 있음.
+			- 각 Broker에는 특정 토픽 파티션들이 분산되어 저장된다.
+			- Client가 어느 단 하나의 Broker(BootStrap Broker라고 부름)에 연결한 뒤에는 클러스터 전체에 연결될 수 있음. (모든 Broker를 알 필요가 없음)
+		- Broker & Topic
+		    - 데이터는 분산되어 저장된다, 특정 브로커에는 토픽이 없을 수 있음
+			- ex) Topic A는 3개 partition, Topic B는 2개의 Partition 존재
+			      Broker1(Topic A_0) Broker2(Topic A_2) Broker3(Topic A_1)
+			      Broker1(Topic B_1) Broker2(Topic B_0) 
+        - Kafka Broker Discovery
+            - 모든 Broker는 Bootstrap server로 부를 수 있음. Client가 하나의 브로커에 접속하면, Client은 전체 Cluster에 연결하는 방법을 알 수 있음 => 각 Broker는 모든 Broker, 모든 Topic, 모든 Partition에 대한 MetaData를 가지고 있다!!!
+            - 1. Connection + Metadata Request (Client -> Broker)
+              2. List of all Brokers (Broker -> Client)
+              3. Can connect to the needed brokers (Client -> 특정 Broker)
+	    - Topic Replication Factor
+	    	- Topic들은 복제 Factor를 가지고, 보통 2~3으로 설정함.
+	    	- Broker가 다운되었을 때, 복제를 가지고 있는 다른 Broker가 Data를 대신 제공함
+				- ex) Topic A : 2 partition, 2 Replication
+				      Broker1(Topic A_0) Broker2(Topic A_1) Broker3(Topic A_1)
+				                         Broker2(Topic A_0) 
+				      Broker2가 Down되어도 Topic A의 Partition 2개가 다 살아있음
+		- Concept of Leader for a Partition
+			- 동일 Partition 중 하나의 Broker는 Partition의 Leader로 되어야함
+			- Producer는 데이터를 Partition Leader에게만 보낼 수 있음
+				- ex) Topic A : 2 partition, 2 Replication, * Leader
+				      Broker1(Topic A_0_Leader) Broker2(Topic A_1_Leader) Broker3(Topic A_1_ISR)
+				                                Broker2(Topic A_0_ISR) 
+	        - *** 각 Partition은 하나의 Leader와 여러 ISR(In Sync Replica)를 가짐
+        - Default Producer&Consumer behavior with leaders
+         	- Producer는 Partition의 Leader Broker에만 데이터를 작성하며, Consumer도 Leader Broker에게서 데이터를 읽을 수 있음.
+     	- Kafka Consumers Replica Fetching (Kafka v2.4+)
+     		- Consumer이 가장 가까운 replica(ISR)에서 데이터를 읽을 수 있도록 기능 추가됨
+    - Producer Acknowledgements & Topic Durability
+    	- Producer ACKs
+    		- Producer로 Broker에 데이터를 보낸 뒤, Kafka Broker로부터 데이터가 쓰여졌다고 확인할 수 있음
+    			- acks = 0 : Producer가 Broker의 ack를 기다리지 않음 (Data Loss 가능성 있음)
+    			- acks = 1 : Producer가 Leader Broker의 ACK를 기다림 (제한된 Data Loss 가능성 있음)
+    			- acks = all : Producer가 Leader + all replicas의 ACK를 기다림(Data Loss 없음)
+		- Kafka Topic Durability
+			- 규칙에 따르면 Replication Factor가 N일 때, N-1개의 Broker가 Down되어도 Data 복구가 가능함
+	- Zookeeper
+		- KAFKA Broker들을 관리하는 소프트웨어임. (Broker List를 유지함)
+		- Partition의 리더 선출을 도움
+		- 토픽 생성/삭제, Broker dies/comes up 등의 변화가 일어날 때 Kafka에게 알림
+		- 홀수 개의 서버와 함께 동작하고, Zookeeper도 한 개의 Leader와 나머지 Follower들을 가진다.
+		- KAFKA Version
+			- Kafka v0.10 이후부터 Zookeeper는 Consumer 데이터를 가지지 않는다.(이후에는 KAFKA 내부 consumer_offset에 저장)
+			- Kafka 2.x can't work without Zookeeper
+			- Kafka 3.x can work without Zookeeper(KIP-500) - using Kafka Raft instead
+			- Kafka 4.x will not have zookeeper 
+	- Kafka KRaft (KIP-500)
+		- Kafka Cluster에 Partition 개수가 100,000개가 스케일링 이슈가 생김
+		- Zookeeper 제거로 인해 더 많은 수의 Partition 사용이 가능해지며, 유지보수와 설정도 간편해지고, 안정성과 모니터링, 지원 관리가 쉬워지며, 전체 시스템에 하나의 보안 모델을 사용할 수 있고(KAFKA 보안만 신경쓰면 되므로), KAFKA 시작이 단일 프로세스로 가능해지며 컨트롤러 종료 및 복구 시간도 짧아짐
+		- Kafka 3.x 부터 KRaft를 사용할 수 있으며, Production Ready는 Kafka 3.3.1(KIP-833) 부터 가능함
+		- Kafka 4.0부터는 KRaft만 사용됨 (Zookeeper X)
+
+- Section 3: KAFKA 시작하기
+	- 
