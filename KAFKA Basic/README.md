@@ -182,4 +182,66 @@
 			6.Setup the $PATH environment variables for easy access to the Kafka binaries
 		- kafka-storage.sh random-uuid 로 클러스터 ID를 얻기 -> kafka-storage.sh format -t 클러스터ID -c ~/kafka_2.13-3.0.0/config/kraft/server.properties 로 폴더 포맷 -> kafka-server-start.sh ~/kafka_2.13-3.0.0/config/kraft/server.properties 로 서버 실행
 
-- Section 4: KAFKA 시작하기
+- Section 4: KAFKA CLI
+  - kafka-topics.sh 
+  	- KAFKA Topic 관리 (Create, List, Describe, Increase Partition, Delete)
+	  	- Create (토픽 생성)
+	  	  - kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --create --partitions 3 --replication-factor 1
+	  	  *** replication-factor는 Broker의 개수보다 같거나 작아야 함 ***
+	  	- List (토픽 List)
+	  	  - kafka-topics.sh --bootstrap-server localhost:9092 --list 
+  	  - Describe (토픽 상세 정보)
+  	    - kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --describe
+	    - Delete (토픽 삭제)
+  	    - kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --delete
+  - kafka-console-producer.sh
+  	- Produce without keys
+  		- kafka-console-producer.sh --bootstrap-server localhost:9092 --topic first_topic 
+  		- kafka-console-producer.sh --bootstrap-server localhost:9092 --topic first_topic --producer-property acks=all
+  		- 없는 토픽에 Produce하면. Timeout or 토픽 자동 생성 후 Leader가 없다는 Error -> 토픽 자동 생성 이후 리더 선정되어 토픽 사용 가능 (But 토픽 자동 생성은 하지 않는 것을 권장)
+  			- kafka-console-producer.sh --bootstrap-server localhost:9092 --topic new_topic
+  		- > config/server.properties에 num.partitions에 자동 생성시 default partition 개수 설정 가능
+  	- Produce with keys
+  		- kafka-console-producer.sh --bootstrap-server localhost:9092 --topic first_topic --property parse.key=true --property key.separator=:
+  		- property 옵션으로 key parsing을 활성화하고 key 구분자를 준 뒤, produce 할 때 키:값 의 형태로 입력하면 키와 값이 parsing되어 Kafka에 produce 됨.
+	- kafka-console-consumer.sh
+		- consume from tail of the topic
+			- Consume 명령 : kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic second_topic
+				- produce한 것을 바로 받아감 (Lag 상관없이 그냥 소켓 통신 느낌)
+		- consume from the beginning of the topic
+			- Consume 명령 :kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic second_topic --from-beginning
+				- 순서가 좀 변경되어서 출력되는데, 이는 파티션 별로 나뉘어져서 순서가 섞인것 뿐이지, 파티션 내에서는 순서가 지켜지고 있음
+		- show both key and values in the output
+			- Consume 명령 : kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic second_topic --formatter kafka.tools.DefaultMessageFormatter --property print.timestamp=true --property print.key=true --property print.value=true --property print.partition=true --from-beginning
+				- ex) CreateTime:1696393976895        Partition:1     null    test1
+							CreateTime:1696393980106        Partition:1     null    test4
+							CreateTime:1696393984140        Partition:1     null    test6
+							CreateTime:1696393988673        Partition:1     null    test9
+							CreateTime:1696393979060        Partition:0     null    test3
+							CreateTime:1696393982891        Partition:0     null    test5
+							CreateTime:1696393987324        Partition:0     null    test8
+							CreateTime:1696393978088        Partition:2     null    test2
+							CreateTime:1696393981182        Partition:2     null    test4
+							CreateTime:1696393985378        Partition:2     null    test7
+		- Consumer in Group
+			- --group 옵션 : kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic fourth_topic --group my-first-application
+			  - Partition이 3개인데, 같은 consumer group 내에 Consumer 개수가 1개이면, 해당 Consumer가 모든 Partition의 데이터를 받음.
+			  - Partition이 3개, 동일 Consumer group 내에 Consumer 개수가 2개이면, 1개의 Consumer가 Partition 2개를 읽고 나머지 1개 Consumer는 1개의 Partition만 읽는다.
+			  - Partition이 3개, 동일 Consumer group 내에 Consumer 개수가 3개이면, 각 Consumer가 Partition 1개를 독점하여 데이터를 읽는다.
+			  *** Partition의 개수보다 동일 Consumer Group 내의 Consumer 개수가 크다면, 1대1로 할당된 뒤, 남은 Consumer는 비활성화 된다 ***
+			  *** Consumer가 Partition을 할당받는데, Consumer의 개수가 변경되어 Partition의 재할당이 일어나는데, 이를 Rebalance라고 함 ***
+			  *** Consumer Group에 속하는 Consumer가 동작하면 Consumer Group의 해당 Topic offset에 따라 미수신한 데이터들도 같이 수신됨 ***
+			  *** --from-beginning 옵션은 Consumer Group으로부터 커밋된 Consumer Offset이 없는 경우에만 동작함!! ***
+  - kafka-consumer-groups.sh
+  	- List Consumer Groups
+  		- List 명령어 : kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
+  	- Describe One Consumer Group
+  		- Describe 명령어 : kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-second-application
+  		*** Console Consumer에서 Group ID를 입력하지 않으면 console-consumer라는 consumer group이 새로 만들어 져서 하나의 Consumer Group처럼 동작하고 중지하면 Group 삭제 ***
+  	- Delete A Consumer Group
+  	- Reset Offsets
+  	  - Consumer Group이 inactive일 때만 적용가능(Consumer가 Stop되어야 가능)
+  		- --reset-offsets 옵션 : kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group my-first-application --reset-offsets --to-earliest --topic third_topic --dry-run
+  			- --to-earliest : 토픽에 존재하는 가장 이른 데이터의 offset으로 offset 설정
+  			- --dry-run : run하지 않고 결과 미리보기
+  			- --execute : 실행

@@ -46,7 +46,7 @@ kafka-console-producer.sh --producer.config playground.config --bootstrap-server
 #####     LOCALHOST    #####
 ############################
 
-kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --create --partitions 1
+kafka-topics.sh --bootstrap-server localhost:9092 --topic first_topic --create --partitions 1 --replication-factor 1
 
 # producing
 kafka-console-producer.sh --bootstrap-server localhost:9092 --topic first_topic 
