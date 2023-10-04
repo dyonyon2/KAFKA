@@ -1,6 +1,7 @@
 - Section 1 : 간단한 강의&KAFKA 소개
 - Section 2 : KAFKA 이론
 - Section 3 : KAFKA 시작하기
+- Section 4: KAFKA CLI
 
 
 - Section 1 : 간단한 강의&KAFKA 소개
@@ -161,4 +162,24 @@
 		- Kafka 4.0부터는 KRaft만 사용됨 (Zookeeper X)
 
 - Section 3: KAFKA 시작하기
-	- 
+	- Window
+		- WSL2설치 -> JDK 11 설치 -> KAFKA 설치 -> 주키퍼 실행 -> 카프카 서버(Broker)실행
+		  - cmd 창에서 ubuntu 입력하면 WSL(Windows Subsystem for Linux)로 우분투 실행됨
+			- ~/kafka_2.13-3.0.0/bin/zookeeper-server-start.sh ~/kafka_2.13-3.0.0/config/zookeeper.properties
+		  - ~/kafka_2.13-3.0.0/bin/kafka-server-start.sh ~/kafka_2.13-3.0.0/config/server.properties
+		  - 각 properties에서 설정 변경 가능
+		- WSK2를 사용하지 않는 방법
+			- 토픽 삭제가 불가능하며 KAFKA-8811 에러가 발생함.
+			- 1주 이상 사용하면 세그먼트가 삭제되며 KAFKA-1194 에러가 발생할 것임
+	- Linux
+		- WSL과 동일
+	- KRaft 모드 (주기퍼 없는 모드!) 
+		- 1.Install Java JDK version 11
+      2.Download Apache Kafka v2.8+ from https://kafka.apache.org/downloads under Binary
+			3.Extract the contents on Linux
+			4.Generate a cluster ID and format the storage using kafka-storage.sh
+			5.Start Kafka using the binaries
+			6.Setup the $PATH environment variables for easy access to the Kafka binaries
+		- kafka-storage.sh random-uuid 로 클러스터 ID를 얻기 -> kafka-storage.sh format -t 클러스터ID -c ~/kafka_2.13-3.0.0/config/kraft/server.properties 로 폴더 포맷 -> kafka-server-start.sh ~/kafka_2.13-3.0.0/config/kraft/server.properties 로 서버 실행
+
+- Section 4: KAFKA 시작하기
