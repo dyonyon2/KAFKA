@@ -1,7 +1,8 @@
 - Section 1 : 간단한 강의&KAFKA 소개
 - Section 2 : KAFKA 이론
 - Section 3 : KAFKA 시작하기
-- Section 4: KAFKA CLI
+- Section 4 : KAFKA CLI
+- Section 5 : KAFKA Java Programming
 
 
 - Section 1 : 간단한 강의&KAFKA 소개
@@ -161,7 +162,7 @@
 		- Kafka 3.x 부터 KRaft를 사용할 수 있으며, Production Ready는 Kafka 3.3.1(KIP-833) 부터 가능함
 		- Kafka 4.0부터는 KRaft만 사용됨 (Zookeeper X)
 
-- Section 3: KAFKA 시작하기
+- Section 3 : KAFKA 시작하기
 	- Window
 		- WSL2설치 -> JDK 11 설치 -> KAFKA 설치 -> 주키퍼 실행 -> 카프카 서버(Broker)실행
 		  - cmd 창에서 ubuntu 입력하면 WSL(Windows Subsystem for Linux)로 우분투 실행됨
@@ -182,7 +183,7 @@
 			6.Setup the $PATH environment variables for easy access to the Kafka binaries
 		- kafka-storage.sh random-uuid 로 클러스터 ID를 얻기 -> kafka-storage.sh format -t 클러스터ID -c ~/kafka_2.13-3.0.0/config/kraft/server.properties 로 폴더 포맷 -> kafka-server-start.sh ~/kafka_2.13-3.0.0/config/kraft/server.properties 로 서버 실행
 
-- Section 4: KAFKA CLI
+- Section 4 : KAFKA CLI
   - kafka-topics.sh 
   	- KAFKA Topic 관리 (Create, List, Describe, Increase Partition, Delete)
 	  	- Create (토픽 생성)
@@ -245,3 +246,136 @@
   			- --to-earliest : 토픽에 존재하는 가장 이른 데이터의 offset으로 offset 설정
   			- --dry-run : run하지 않고 결과 미리보기
   			- --execute : 실행
+
+- Section 5 : KAFKA Java Programming
+	- KAFKA Client Libraries SDK List : Java, Scala, C/C++, Golang, Python, Javascript/Node.js, .NET/C#, Rust, REST API, Kotlin, Haskell, Ruby
+	- Producer
+		- Java API - Basics
+			- 1. Producer Properties 설정
+	        Properties properties = new Properties();
+	        properties.setProperty("bootstrap.servers","localhost:9092"); // localHost
+	        // Serializer 설정
+	        properties.setProperty("key.serializer",StringSerializer.class.getName());
+	        properties.setProperty("value.serializer",StringSerializer.class.getName());
+	    - 2. Create the Producer
+	        KafkaProducer<String, String> producer = new KafkaProducer<>(properties);
+	    - 3. Create a Producer Record
+	        ProducerRecord<String, String> producerRecord = new ProducerRecord<>("Test_Topic","Hello Dyonyon!!");
+	    - 4. Send Data
+	        producer.send(producerRecord);
+	    - 5. Flush and Close the Producer
+	    		// tell teh producer to send all data and block until done -- sy
+	        producer.flush(); 
+	        producer.close();
+    - Java API - Callbacks
+    	- producer.send(데이터, 콜백함수) 를 통해 metadata, error를 받아서 확인할 수 있음.
+    	  - producer.send(producerRecord, new Callback() {
+            @Override
+            public void onCompletion(RecordMetadata metadata, Exception e) {
+              // executes every time a record successfully sent or an exception is thrown
+              if (e == null) {
+                // the record was successfully sent
+                log.info("Received new metadata \n" +
+                        "Topic: " + metadata.topic() + "\n" +
+                        "Partition: " + metadata.partition() + "\n" +
+                        "offset: " + metadata.offset() + "\n" +
+                        "timestamp: " + metadata.timestamp());
+              } else {
+                log.error("Error while Producing", e);
+              }
+            }
+          });
+      - 기본 Partitional.class는 null이며, default는 스티키 파티셔너(Sticky Partitioner)이다.
+        - Sticky Partitioner : 각 데이터마다 따로 보내는 것이 아니라, 빠른 시간내에 들어온 데이터들은 batching하여 하나로 묶어서 보내는 방식
+    - Java API - keys
+    	- ProducerRecord<String, String> producerRecord = new ProducerRecord<>(topic, key, value);
+	- Consumer
+		- Java API - Basics
+			- 1. Create Consumer Properties
+        Properties properties = new Properties();
+        properties.setProperty("bootstrap.servers","localhost:9092");
+        properties.setProperty("key.deserializer", StringDeserializer.class.getName());
+        properties.setProperty("value.deserializer",StringDeserializer.class.getName());
+        properties.setProperty("group.id",groupId);
+        properties.setProperty("auto.offset.reset","earliest"); // none / earliest / latest
+			- 2. Create a Consumer
+        KafkaConsumer<String, String> consumer = new KafkaConsumer<>(properties);
+      - 3. Subscribe to a Topic
+        consumer.subscribe(Arrays.asList(topic));
+			- 4. Poll for Data
+        while(true){
+          log.info("Polling!");
+          ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
+          for(ConsumerRecord<String, String> record : records){
+            log.info("key : "+record.key()+", value : "+record.value());
+            log.info("Partition : "+record.partition()+", Offset : "+record.offset());
+          }
+        }
+			- 5. Shutdown Consumer ( hook 등록 -> while 동작 -> 종료 누르기 -> hooking에 걸림 -> consumer wakeup() -> catch 문에 WakeupException에 걸림 -> finally에서 consumer 종료 -> main 종료 -> hooking에 main.join으로 종료 기다림 )
+				 // Get a reference to the main thread
+        final Thread mainThread = Thread.currentThread();
+
+        // Adding the shutdown hook
+        Runtime.getRuntime().addShutdownHook(new Thread(){
+            public void run(){
+                log.info("Detected a shutdown, let's exit by calling consumer.wakeup()...");
+                consumer.wakeup();
+                // join the main thread to allow the execution of the code in the main thread
+                try {
+                    mainThread.join();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+				...
+				try {
+          consumer.subscribe(Arrays.asList(topic));
+
+          while (true) {
+            log.info("Polling!");
+
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
+
+            for (ConsumerRecord<String, String> record : records) {
+              log.info("key : " + record.key() + ", value : " + record.value());
+              log.info("Partition : " + record.partition() + ", Offset : " + record.offset());
+            }
+          }
+        } catch (WakeupException e) {
+          log.info("Consumer is starting to shut down");
+        } catch (Exception e){
+          log.error("Unexpected exception in the consumer", e);
+        } finally {
+          consumer.close(); // close the consumer, this will also commit offsets
+          log.info("The consumer is now gracefully shut down");
+        }
+
+		- Java API - Consumer Groups and Partition Rebalance
+			- Partition Rebalance 
+				- 같은 토픽, 같은 Consumer Group내에 속한 Consumer가 추가/제거 된다면 Partition을 재분배하는 리밸런스(Rebalance)가 일어난다.
+				- Consumer가 그룹에 참여하거나 탈퇴할 때 발생함
+				- Rebalance 종류
+					- Eager Rebalance(적극적 리밸런스)
+						- Consumer가 추가되면, 모든 Consumer는 Stop -> 이전 파티션 할당 Revoke -> 전부 무작위로 재할당
+						*** Stop 해야한다는 것과(Stop the World), 이전에 할당 받은 Partition이 다시 같은 consumer에게 할당된다는 보장이 없음 ***
+						- RangeAssignor : assign partitions on a per-topic basis
+						- RoundRobin : assign partitions across all topics in round-tobin fashion, optimal balance
+						- StickyAssignor : balanced like RoundRobin, then minimises partition movements when consumer join/leave the group 
+					- Cooperative(Incremental) Rebalance(협력적/점진적 리밸런스)
+						- 특정 파티션들만 Reassign되므로, 다른 Consumer들은 중단 없이 작업함
+						- partition.assignment.strategy
+							- CooperativeStickyAssignor : rebalance strategy is identical to StickyAssignor but supports cooperative rebalances and therefore consumers can keep on consuming from the topic
+				- The default assignor is [RangeAssignor, CooperativeStickyAssignor], which will use the RangeAssignor by default, but allows upgrading to the CooperativeStickyAssignor with just a single rolling bounce that removes the RangeAssignor from the list.
+				  - properties 설정으로 assign 전략 변경 가능 properties.setProperty("partition.assignment.strategy", CooperativeStickyAssignor.class.getName());
+				- KAFKA Connect : Cooperative Rebalance가 Default
+				- KAFKA Streams : StreamsPartitionAssignor가 Default
+			- Static Group Membership
+				- 기본적으로는 Consumer가 group을 leave하면 해당 partition을 revoke하고, re-assign 함
+				- 만약 나갔던 Consumer가 돌아오면 새로운 Member ID를 받고 새로운 Partition을 assign 받음
+				- 여기서 group.instance.id라는 static한 member ID값을 설정을 해주면, consumer가 leave한 뒤, Partition을 assign하지 않고 session.timeout.ms 만큼 기다린다. 그 timeout안에 동일한 group.instance.id를 가진 consumer가 re-join하면 해당 Partition을 그대로 assign해주고, timeout이 지나도 re-join하지 않으면 re-assign하는 방식이다.
+		- Auto Offset Commit Behavior
+			- enable.auto.commit을 true로 설정하고, auto.commit,interval.ms를 5000으로 설정하면, 데이터를 poll하고 5초가 지난 뒤, 다시 poll을 호출할 때 같이 commit을 한다!
+
+			***** 지금까지 offset이 커밋되는 것은, offset auto commit에 의해 다시 pool을 호출해주면서 offset이 commit되거나, Consumer.close()를 하면서 자동으로 offset이 commit 된 것임!!! *****
+			

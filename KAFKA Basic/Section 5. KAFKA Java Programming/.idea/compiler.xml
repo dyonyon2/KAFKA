@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <bytecodeTargetLevel>
+      <module name="Kafka-beginners-course.kafka-basics" target="11" />
+      <module name="Kafka-beginners-course.kafka-basics.main" target="11" />
+      <module name="Kafka-beginners-course.kafka-basics.test" target="11" />
+      <module name="Kafka-beginners-course.main" target="11" />
+      <module name="Kafka-beginners-course.test" target="11" />
+    </bytecodeTargetLevel>
+  </component>
+</project>
