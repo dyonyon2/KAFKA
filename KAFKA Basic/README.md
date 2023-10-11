@@ -3,6 +3,7 @@
 - Section 3 : KAFKA 시작하기
 - Section 4 : KAFKA CLI
 - Section 5 : KAFKA Java Programming
+- Section 6 : KAFKA simple wikimedia Project and advanced Producer configuration
 
 
 - Section 1 : 간단한 강의&KAFKA 소개
@@ -378,4 +379,134 @@
 			- enable.auto.commit을 true로 설정하고, auto.commit,interval.ms를 5000으로 설정하면, 데이터를 poll하고 5초가 지난 뒤, 다시 poll을 호출할 때 같이 commit을 한다!
 
 			***** 지금까지 offset이 커밋되는 것은, offset auto commit에 의해 다시 pool을 호출해주면서 offset이 commit되거나, Consumer.close()를 하면서 자동으로 offset이 commit 된 것임!!! *****
-			
+- Section 6 : KAFKA simple wikimedia Project and advanced Producer configuration
+	- Wikimedia Project
+	  - wikimedia의 recent change data를 받는 url로 Event를 등록해두어, 해당 URL로부터 데이터(메시지)가 들어오면 onMessage 이벤트 핸들러가 동작함. 이 핸들러에 Kafka Producer Send를 등록해두어 데이터가 들어오면 카프카에 전송하는 구조!
+	  - Producer Properties 세팅
+	    - Producer Acknowledgements (acks)
+	      - Producer들은 Data Write가 완료되면 ACK를 받을 수 있음
+	      - acks = 0 : Producer가 ACK를 기다리지 않음 (Data Loss 가능성 있음)
+	        - Producer가 메시지를 전송한 순간 메시지 쓰기를 성공했다고 간주. Broker가 수신하기까지 기다리지 않음. Broker가 오프라인 상태 혹은 예외 발생하면 상황을 알 수 없고 데이터를 손실함
+	        - 데이터 손실이 생길 수 있으나, 네트워크 오버헤드가 작아 처리량이 제일 좋음
+	      - acks = 1 : Producer가 리더 Broker의 ACK를 기다림 (제한된 Data Loss)
+	        - Producer가 메시지를 전송하고 리더 Broker로부터의 ACK가 와야 메시지 쓰기 성공으로 판단
+	        - 복제(Replication)에 대한 보증은 되지 않음
+	      - acks = all or -1 : Proder가 리더 Broker와 Replica Broker들의 ACK를 다 기다림(손실 X)
+          - Producer는 모든 ISR로부터 메시지를 수신했다는 ACK를 받아야 메시지 쓰기 성공으로 판단
+        - min.insync.replicas
+          - 최소 복제되어야하는 Broker 개수. 
+        - Kafka Topic Availability : 카프카 토픽 가용성
+          - acks=all일때, Replication Factor가 N이고 min.insync.replicas가 M이면, N-M개의 Broker가 다운되어도 괜찮음
+          - 주로 Acks=all이고 min.insync.replicas=2로 설정하여, 하나의 Broker가 다운되어도 견딜 수 있음
+	    - Producer Retries
+	      - 데이터 전송에 실패하면 개발자는 그에 따른 예외처리를 해야함
+	      	- ex) NOT_ENOUGH_REPLICAS (due to min.insync.replicas setting)
+	      - 이를 재처리하는 세팅이 있음 (retries)
+	        - KAFKA 2.0 이전에는 0, KAFKA 2.1이후에는 2147483647이 기본값
+	      - retry.backoff.ms은 다음 재시도까지의 대기시간이고, 100ms가 기본값
+	      - 재처리는 timeout 까지 계속 재처리된다.
+	      - 요청이 delivery.timeout.ms이 지날때까지 처리되지 않으면 요청은 실패했다고 봄
+	      - Idempotent(멱등) Producer (KAFKA 3.0부터 default)
+	        - 메시지 중복, 순서 역전을 방지하는 Producer임
+	        - ex) 메시지 A 전송(P) -> 메시지 commit(B) -> ACK 전송(B) -> ACK 전송실패 -> 메시지 A 재전송(P) -> 메시지 commit(B) -> ACK 전송(B) -> ACK 수신(P)
+	          - > 메시지 중복 
+	        - Idempotent Producer를 사용하면 메시지를 재전송했을 때, Broker에서 중복임을 감지하여 commit하지 않고 ACK만 Broker에게 전송
+          - They come with:
+            - retries = Integer.MAX_VALUE(2147483647)
+            - max.inflight.request=1 (Kafka=0.11) 혹은 5 (Kafka>=1.0)
+            - acks = all
+            - producerProps.put("enable.idempotence",true);
+    	- KAFKA Producer Default
+    	  - Since KAFKA 3.0
+	    	  - acks = all
+	    	  - enable.idempotence=true
+    	  - With KAFKA 2.8 and lower
+    	    - acks = 1
+    	    - enable.idempotence=false
+    	- Safe KAFKA Producer 정리
+    	  - acks = all
+    	    - Ensures data is properly replicated before an ack is received
+    	  - min.insync.replicas = 2
+    	    - Ensures two brokers in ISR at least have the data after an ack
+    	  - enable.idempotence = true
+    	    - Duplicates are not introduced due to network retries
+    	  - retries = MAX_INT
+    	    - Retry until delivery.timeout.ms is reached
+    	  - delivery.timeout.ms = 120000
+    	    - Fail after retrying for 2 minutes
+    	  - max.in.flight.requests.per.connection = 5
+   				- Ensure maximum performance while keeping message ordering
+   	  *** KAFKA 3.0 밑 버전을 사용할 시 위의 설정을 통해 KAKFA Producer을 Safe하게 해줘야함
+   	    - ex) properties.setProperty(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG,"true");
+        			properties.setProperty(ProducerConfig.ACKS_CONFIG,"all");
+        			properties.setProperty(ProducerConfig.RETRIES_CONFIG,Integer.toString(Integer.MAX_VALUE));
+  - Message Compression at the Producer level
+    - 메시지 압축은 Producer level에서 진행(Broker/Topic level도 있음), Broker나 Consumer에서 설정을 변경해 줄 것이 없음.
+    - compression.type은 none(default), gzip, lz4, snappy, zstd 등이 있음 (snappy, lz4를 주로 사)
+    - 메시지 압축의 장점
+      - Much smaller producer request size
+      - Faster to transfer data over the network
+      - Better throughput
+      - Better disk utilisation in KAKFA
+    - 메시지 압축의 단점
+      - Producers must commit some CPU cycles to compression
+      - Consumers must commit some CPU cycles to decompression
+    - Broker level 압축
+      - Broker level 압축은 모든 Topic에 대하여 압축, Topic level은 각 topic만 압축
+      - Broker에서의 압축은 별도의 CPU 자원이 더 들어가서 비효율적임
+      - Broker compression 설정
+	      - compression.type = producer(default) : Broker는 Producer가 압축한 배치를 재압축하지 않고 그대로 로그 파일로 저장
+	      - compression.type = none : 모든 배치는 Broker에 의해 decompressed됨
+	      - compression.type = lz4(특정 압축)
+	        - 만약 Producer의 compression 세팅과 동일하면 데이터를 그대로 저장
+	        - 만약 Producer의 compression 세팅과 다르면 배치들을 decompressed한 뒤에 다시 명시한 압축 알고리즘으로 재압축한다.
+    *** 주로 Producer에서 압축하고, Broker에서는 compression.type을 기본값인 producer로 두어 압축한 배치를 그대로 사용하고, Producer에서 압축을 못하는 상황에서만 Broker에서 압축!
+  - Two settings to influence the batching mechanism
+    - linger.ms : (default 0) how long to wait until we send a batch. Adding a small number for example 5 ms helps add more messages in the batch at the expense of latency. 
+      - Message들이 들어왔을때 바로 전송하는 것이 아니라 linger.ms만큼 기다려서 batch로 만들어서 전송!
+    - batch.size : (default 16KB) if a batch is filled before linger.ms, increase the batch size
+      - Maximum number of bytes that will be included in a batch
+      - Increasing a batch size to something like 32KB or 64KB can help increasing the compression, throughput, and efficiency of requests
+      - Any message that is bigger than batch size will not be batched
+      - A batch is allocated per partition, so make sure that you don't set it to a number that's too high, otherwise you'll run waste memory
+      - KAFKA Producer Metrics을 통해 average batchsize metric을 모니터링 할 수 있음
+  - High Throughput Producer
+    - Increase linger.ms and the producer will wait a few milliseconds for the batches to fill up before sending them
+    - If you are sending full batches and have memory to spare, you can increase batch.size and send larger batches
+    - Introduce some producer-level compression for more efficiency in sends
+  - High Throughput Producer - batch Demo
+    - Snappy 메시지 압축을 사용해볼 것임. text 기반 메시지 압축에 효과적
+    - batch.size를 32KB, linger.ms를 20ms로 세팅해볼 것임
+    - ex) properties.setProperty(ProducerConfig.LINGER_MS_CONFIG,"20");
+      		properties.setProperty(ProducerConfig.BATCH_SIZE_CONFIG,Integer.toString(32x1024));
+      		properties.setProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG,"snappy");
+  - Producer Default Partitioner when key!=null
+    - Producer Partitioner 로직에 따라 key가 어떤 Partition에 저장이 될지 Partition을 할당하는 로직이 있음. 
+    - Key Hashing is the process of determining the mapping of a key to a partition
+    - In the default KAFKA partitioner, the keys are hashed using murmur2 algorithm
+      - targetPartition = Math.abs(Utils.murmur2(KeyBytes)) % (numPartitions - 1)
+    - This means that same key will go to the same partition, and adding partitions to a topic will completely alter the formula
+    - 식을 보면 알 수 있듯이, partition개수가 달라지게되면 저장되는 타겟 partition이 달라질 수 있음! => 추가가 필요하다면 토픽을 새로 만드는게 맞음
+    - 권장되지는 않지만, 아주 특수한 경우에 파티셔널 로직을 수정하여 사용하려면 KAFKA Producer의 Partitioner.class 파라미터를 통해 만들 수 있음.
+  - Producer Default Partitioner when key=null
+    - When key=null, the producer has a default partitioner that varies:
+      - Round Robin(Version <= KAFKA 2.3)
+        - This results in more batches (one batch per partition) and smaller batches
+        - Smaller batches lead to more requests as well as higher latency
+      - Sticky Partitioner(Version >= KAFKA 2.4)
+        - It would be better to have all the records sent to a single partition and not multiple partitions to improve batching
+        - The Producer sticky partitioner
+          - We "stick" to a partition until the batch is full or linger.ms has elapsed
+          - After sending the batch, the partition that is sticky changes
+          - Larger batches and reduced latency (because larger requests, and batch.size more likely to be reached)
+  - Producer max.block.ms 와 buffer.memory
+    - Producer의 처리량이 매우 많아지고, Broker가 요청에 빠르게 대응하지 못하면 Producer의 메모리에 Record 쌓임.
+      - buffer.memory = 33554432 (32MB) : the size of the send buffer
+    - The buffer will fill up over time and empty back down when the throughput to the broker increases
+    - If the buffer is full, then the .send() method will start to block(바로 return 안됨)
+      - max.block.ms = 60000 : the time the .send() will block until throwing an exception. 60초까지 block되도 되며, 그 이후는 Error 던진다는 말
+      - Exceptions are thrown when:
+        - The producer has filled up its buffer
+        - The broker is not accepting any new data
+        - 60seconds has elapsed
+      - If you hit an exception hit that usually means your brokers are down or overloaded as they can't respond to requests
