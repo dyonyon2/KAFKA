@@ -4,6 +4,7 @@
 - Section 4 : KAFKA CLI
 - Section 5 : KAFKA Java Programming
 - Section 6 : KAFKA simple wikimedia Project and advanced Producer configuration
+- Section 7 : OpenSearch Consumer and advanced Consumer configurations
 
 
 - Section 1 : 간단한 강의&KAFKA 소개
@@ -379,7 +380,7 @@
 			- enable.auto.commit을 true로 설정하고, auto.commit,interval.ms를 5000으로 설정하면, 데이터를 poll하고 5초가 지난 뒤, 다시 poll을 호출할 때 같이 commit을 한다!
 
 			***** 지금까지 offset이 커밋되는 것은, offset auto commit에 의해 다시 pool을 호출해주면서 offset이 commit되거나, Consumer.close()를 하면서 자동으로 offset이 commit 된 것임!!! *****
-- Section 6 : KAFKA simple wikimedia Project and advanced Producer configuration
+- Section 6 : Wikimedia Project and advanced Producer configurations
 	- Wikimedia Project
 	  - wikimedia의 recent change data를 받는 url로 Event를 등록해두어, 해당 URL로부터 데이터(메시지)가 들어오면 onMessage 이벤트 핸들러가 동작함. 이 핸들러에 Kafka Producer Send를 등록해두어 데이터가 들어오면 카프카에 전송하는 구조!
 	  - Producer Properties 세팅
@@ -510,3 +511,87 @@
         - The broker is not accepting any new data
         - 60seconds has elapsed
       - If you hit an exception hit that usually means your brokers are down or overloaded as they can't respond to requests
+
+- Section 7 : OpenSearch Consumer and advanced Consumer configurations
+  - Delivery Semantics
+    - At Most Once : 메시지 batch를 수신하자마자 offset을 커밋하는 방법. 데이터를 처리중에 Consumer가 crash되거나 처리가 잘못되면, 데이터 유실이 일어난다.
+    - At Least Once(권장됨) : 메시지가 처리된 뒤에 offset을 커밋하는 방법. 처리가 잘못되면 메시지를 다시 읽음. 그렇기에 메시지 처리의 중복이 발생할 수 있음.
+      - > Processing이 idempotent(멱등)이어야 함
+    - Exactly Once : Can be achieved for KAFKA => KAFKA workflows using the Transactional API(easy with KAFKA Streams API). For KAFKA => Sink workflows, use an idempotent consumer
+  - Consumer 멱등 처리
+    - 고유한 ID를 두어 처리할 때 사용하면 됨. 
+    - ex) String id = record.topic()+"_"+record.partition()+"_"+record.offset();
+  - Consumer Offset Commit Strategies
+    - Strategues:
+      - enable.auto.commit = true & synchronous processing of batches
+        - ex) while(true){
+        	  List<Records> batch = consumer.poll(Duration.ofMillis(100));
+        	  doSomethingSynchronous(batch)
+        	}
+      - enable.auto.commit = false & manual commit of offset
+      	- ex) while(true){
+        	  batch += consumer.poll(Duration.ofMillis(100));
+        	  if isReady(batch){
+	        	  doSomethingSynchronous(batch)
+	        	  consumer.commitAsync();
+	        	}
+        	}
+      - enable.auto.commit = false & storing offsets externally
+        - Need to assign partitions to consumers at launch manually using .seek() API
+        - Need to model and store offsets in DB.
+    - Auto offset Commit Behavior
+      - In the Java Consumer API, offset은 정기적으로 커밋됨
+      - Offset은 auto.commit.interval.ms가 지나고 poll을 호출할 때 커밋된다.
+      - Make sure messages are all successfully processed before call poll() again
+        - 그렇지 않는 경우 enable.auto.commit을 false로 바꾸고 commitSync()나 commitAsync()를 호출하여 offset을 수동으로 커밋해주어야함.
+  - Consumer Offset Reset Behavior
+    - offset.retention.minutes : Broker 설정, offset 보관 기간
+    - If Kafka has a retention of 7 days, and consumer is down for more than 7 days, the offsets are "Invalid"!
+    - auto.offset.reset 
+      - latest (가장 최신 log 끝부터. 즉 지금부터 들어오는 것들 받겠다) : Will read from the end of the log
+      - earliest (가장 처음 log부터. 처음부터 쭉 받겠다) : Will read from the start of the log
+      - none : Will throw exception if no offset is found
+  - Replaying data for Consumers
+    - To reply data for a consumer group:
+      - 1. Take all the consumers from a specific group down
+      - 2. Use kafka-consumer-groups command to set offset to what you want
+      - 3. Restart consumers
+  - Controlling Consumer Liveliness
+    - Consumer 그룹 내의 Consumer들은 Consumer Groups Coordinator에게 Heartbeat 메시지를 보내고 Broker에게 Poll 요청을 보낸다.
+      - Heartbeat와 Poll을 통해 Consumer가 down되었는지 살아있는지 판단함
+    - Consumer Heartbeat Thread
+      - This Mechanism is used to detect a consumer application being down
+      - heartbeat.interval.ms (default 3 seconds):
+        - Heartbeat 보내는 주기 설정이며, 보통 session.timeout.ms의 1/3로 설정함
+      - session.timeout.ms (default 45 seconds kafka 3.0+, before 10 seconds)
+        - 세션 timeout 시간동안 heartbeat가 오지 않으면 consumer dead로 판단
+    - Consumer Poll Thread
+			- 데이터 처리 issue을 detect 하는데 사용(처리 오류, consumer is "stuck")    
+      - max.poll.interval.ms (default 5 minutes)
+        - 2번의 poll 사이에 최대 시간. 설정 시간보다 오래걸리면 문제가 있다고 판단함
+        - Poll한 데이터를 처리하는데 걸리는 경우에 설정을 잘해야함(Spark 같은 Big Data 프레임워크)
+      - max.poll.records (default 500)
+        - 요청당 한번에 가져올 수 있는 레코드 개수.
+        - Record 크기, Record 처리 시간에 따라 달라져야함
+      - fetch.min.bytes (default 1)
+        - 요청당 가져올 요청의 최소 단위.
+      - fetch.max.wait.ms (default 500)
+        - fetch.min.bytes를 만족하지 못하는 데이터를 반환하기 전에 block하는 시간
+      - max.partition.getch.bytes (default 1MB)
+        - 서버가 반환할 파티션당 데이터의 최대 사이즈
+        - ex) 100개 파티션을 읽을때 100MB의 메모리가 필요함을 뜻함
+      - fetch.max.bytes (default 55MB)
+        - 각 fetch로 가져올 데이터의 최대 
+  - Default Consumer Behavior with partition leaders
+    - Kafka Consumer는 기본적으로 Leader Broker에서 데이터를 읽음
+    - Kafka Consumers Replica Fetching (KAFKA 2.4+)
+      - Leader가 아닌 가까운 Replica에서 데이터를 읽을 수 있음
+      - Improve Latency! Decrease Network costs
+    	- Broker setting:
+    	  - Version >= KAFKA 2.4
+    	  - rack.id 설정이 Data Center의 아이디여야함 (AWS의 경우 AZ ID)
+    	  - replica.selector.class 가 org.apache.kafka.common.replica.RackAwareReplicaSelector로 설정되어야 함
+  	  - Client setting:
+  	    - client.rack 을 Consumer가 실행되는 data Center ID로 설정
+  	    - 
+
