@@ -5,6 +5,8 @@
 - Section 5 : KAFKA Java Programming
 - Section 6 : KAFKA simple wikimedia Project and advanced Producer configuration
 - Section 7 : OpenSearch Consumer and advanced Consumer configurations
+- Section 8 : KAFKA API
+
 
 
 - Section 1 : 간단한 강의&KAFKA 소개
@@ -593,5 +595,150 @@
     	  - replica.selector.class 가 org.apache.kafka.common.replica.RackAwareReplicaSelector로 설정되어야 함
   	  - Client setting:
   	    - client.rack 을 Consumer가 실행되는 data Center ID로 설정
-  	    - 
+*** admin@conduktor.io / admin
 
+- Section 8 : KAFKA 확장 API
+	- 다양한 KAFKA Advanced API가 있음
+	  - KAFKA Connect solves External Source => KAFKA, or KAFKA => External Sink
+	  - KAFKA Streams solves 토픽 -> 토픽으로 데이터 전송
+	  - Schema Registry helps using Schema in KAFKA
+	- KAFKA Connect Introduction
+	  - KAFKA Connect is all about code & connectors re-use!
+	  - 개발자들은 항상 같은 곳(Source)에서 데이터를 가져오길(import) 원하고 항상 같은 곳(Target, sink)에 저장하길 원함
+	  - Source Connectors : get data from Common Data Sources
+	  - Sink Connectors : pubilsh that data in Common Data Stores
+	  - KAFKA Connect는 source, sink connect 등이 있으며, 개발자들이 만들어 놓은 것을 재사용할 수 있음. 약간 모듈 재사용하는 느낌
+	  - 필요한 설정 및 connector를 가지고 connect-standalone.bat 로 connector를 실행하는 느낌
+	    - ex) connect-standalone.bat ../../config/connect-standalone.properties ../../config/elasticsearch.properties
+	  - 알아서 source에서 put하고 알아서 kafka에서 get하여 sink에 저장하는 완성된 모듈 사용하는 느낌
+  - KAFKA Streams Introduction
+    - Easy data processing and transformation library within KAFKA
+    - 특징 
+      - Standard Java Application
+ 			- No need to create a separate cluster
+ 			- Highly scalable, elastic and fault tolerant
+ 			- Exactly-Once Capabilities
+ 			- One record at a time processing
+ 			- Works for any application size
+ 		- 아래와 같이 Stream 처리 Process를 만들고 Topology를 구성하고 KAFKA Streams를 통해 Stream 처리할 수 있는 라이브러리.
+ 	    - ex) StreamsBuilder builder = new StreamsBuilder();
+		        KStream<String, String> changeJsonStream = builder.stream(INPUT_TOPIC);
+
+		        BotCountStreamBuilder botCountStreamBuilder = new BotCountStreamBuilder(changeJsonStream);
+		        botCountStreamBuilder.setup();
+
+		        WebsiteCountStreamBuilder websiteCountStreamBuilder = new WebsiteCountStreamBuilder(changeJsonStream);
+		        websiteCountStreamBuilder.setup();
+
+		        EventCountTimeseriesBuilder eventCountTimeseriesBuilder = new EventCountTimeseriesBuilder(changeJsonStream);
+		        eventCountTimeseriesBuilder.setup();
+
+		        final Topology appTopology = builder.build();
+		        LOGGER.info("Topology: {}", appTopology.describe());
+		        KafkaStreams streams = new KafkaStreams(appTopology, properties);
+		        streams.start();  
+
+		  - ex) public void setup() {
+			        this.inputStream
+			                .mapValues(changeJson -> {
+			                    try {
+			                        final JsonNode jsonNode = OBJECT_MAPPER.readTree(changeJson);
+			                        if (jsonNode.get("bot").asBoolean()) {
+			                            return "bot";
+			                        }
+			                        return "non-bot";
+			                    } catch (IOException e) {
+			                        return "parse-error";
+			                    }
+			                })
+			                .groupBy((key, botOrNot) -> botOrNot)
+			                .count(Materialized.as(BOT_COUNT_STORE))
+			                .toStream()
+			                .mapValues((key, value) -> {
+			                    final Map<String, Long> kvMap = Map.of(String.valueOf(key), value);
+			                    try {
+			                        return OBJECT_MAPPER.writeValueAsString(kvMap);
+			                    } catch (JsonProcessingException e) {
+			                        return null;
+			                    }
+			                })
+			                .to(BOT_COUNT_TOPIC);
+			    }
+  - KAFKA Schema Registry Introduction
+    - KAFKA는 Producer로부터 Byte를 받아서 Consumer에게 publish함. 이 과정에서 데이터 Verification이 없음.
+    - Producer가 잘못된 데이터를 보내거나, 필드 이름이 변경되었거나, 데이터 포맷이 변경되었거나... 등등의 상황에서 Consumer는 Error가 발생함.
+      - We need data to be self describable
+      - We need to be able to evolve data without breaking downstream consumers.
+      - > 그렇기 때문에 Schema와 Schema Registry가 필요함.
+    - Q. KAFKA Broker가 데이터를 받아서 Verifying하면?
+      - KAFKA의 존재 가치가 사라짐
+        - KAFKA는 데이터를 읽거나 파싱하지 않음(CPU 사용이 없음)
+        - Bytes을 입력으로 받을 뿐 메모리에 올리지 않음(zero copy)
+      	- KAFKA는 단순히 takes bytes, distributes bytes (no matter what kind of data.... String, Int, JSON 등등)
+      - > So! Schema Registry는 별도로 구성되어야하며, 
+        > Consumer와 Producer는 Schema Registry와 소통할 수 있어야하고,
+        > Schema Registry는 KAFKA에게 데이터를 전송하기 전, Bad data를 reject할 수 있어야 함
+        > Common data format은 Schema Registory와 합의 되어야함.
+          - Data format은 스키마, 스키마 변경(evolution) 을 지원해야하며, 가벼워야함.
+    - Schema Registry의 목적
+      - Store and retrieve schemas for Producers / Consumers
+      - Enforce Backward / Forward / Full compatibility on topics 
+      - Decrease the size of the payload of data sent to KAFKA
+    - Pipeline with/without Schema Registry는 아래와 같다.
+      - Schema Registry 없을 때 : Source - Producer - KAFKA - Consumer - Target
+      - Schema Registry 있을 때 : Source - Producer     -     KAFKA     -     Consumer - Target
+                                              |                |                |
+                                              |---------Schema Registry---------|
+        - Producer가 데이터를 KAFKA로 보내기 전 Schema Registry로 보냄 -> Schema Registry가 KAFKA와 스키마 유효성을 체크 -> 문제가 없다면, Producer가 데이터를 KAFKA에 전송
+        - Consumer가 데이터를 KAFKA에서 받음 -> Schema Registry로부터 Schema를 받음 -> Schema를 통해 Data를 역직렬화하여 사용
+  - KAFKA API
+    - DB에서 가져오고 DB에 넣는 로직이라면 Connect사용, 간단하게 데이터를 전달하여 메일을 보낸다거나의 처리는 producer / consumer 사용
+    - 사용하는 API는 서비스의 특성에 따라 달라질 것으로 보임 (ex. KAFKA 내부에서 Stream 처리가 필요한지, 단순한 처리인지 등)
+    - Source DB - KAFKA Connect Source  - KAFKA  - KAFKA Connect Sink - Target DB
+      Client    - KAFKA Producer        -        - KAFKA Consumer     - 간단한 처리
+                                          |   |
+                               KAFKA Streams  KSQL
+  - 실제 KAFKA 사례
+    - Partition Conut & Replication Factor & Cluster 설정 가이드
+      - Partition 개수를 나중에 변경하게 된다면, Key ordering 보장이 깨진다.
+      - Replication Factor를 topic lifecycle 도중 증가시키게 된다면, Cluster에 부담을 주어 성능에 영향이 감
+    	- Partition Count 가이드라인
+    	  - Partition의 개수가 많을 때의 장점
+    	    - 병렬 진행(Parallelism), Throughput 증가
+    	    - Consumer Group내에서 Consumer의 개수를 늘릴수 있다(Consumer의 최대 개수는 Partition 총 개수보다 클 수 없으므로)
+    	    - Cluster가 크다면, 더 많은 Broker를 활용할 수 있음
+    	  - 단점
+    	    - Zookeeper를 위해 더 많은 Election이 이루어짐 (Partition Leader 선정?)
+    	    - KAFKA에서 더 많은 File이 열림
+        - > 가이드라인
+          - Small Cluster(< 6 Brokers) : 3 x number of brokers
+          - Big Cluster(> 12 Brokers) : 2 x number of brokers
+          - Adjust for number of consumers you need to run in parallel at peak throughput
+          - Adjust for producer throughput (increase if super-high throughput or projected increase inthe next 2 years)
+          *** 각 환경과 상황에 따라 성능이 다르므로, 테스트를 반복하여 성능을 체크하여 최적의 배치를 찾는 것이 중요! ***
+      - Replication Factor 가이드라인
+        - Should be at least 2, usually 3,maximum 4
+        - Replication Factor가 높을 때의 장점
+          - Better durability of system (N-1 Broker들의 down되어도 괜찮음)
+          - Better availability of system (N-min.insync.replicas if producer acks=all)
+        - 단점
+          - Higher latency
+          - More disk space on system
+        - > 가이드라인:
+          - Replication Factor를 3으로 두고 시작!
+          - Replication 성능이 문제가 된다면, replication factor를 줄이는 것이 아니라 더 좋은 성능의 Broker를 사용하는 것이 옳음
+          - 절대 1로 설정하지 않을 것!!
+      - Cluster 가이드라인
+      	- 클러스터 내의 총 Partition의 개수:
+      	  - Zookeeper 사용하는 KAFKA : Max 200,000 Partitions(Nov 2018) - Zookeeper Scaling limit
+      	  	- 각 브로커마다 4,000개의 Partition을 권장하고 있음(Soft limit)
+      	  - KRaft 사용하는 KAFKA : Millions of Partitions
+      	    - 만약 200,000개의 Partition보다 더 많이 필요하다면, Netflix model을 참고하고, 독립적인 KAFKA Cluster를 추가로 생성하기
+    - 토픽 이름 짓기
+      - 토픽 이름은 자유이지만, Cluster 관리를 위하여 가이드라인을 만들어라 (참고 https://cnr.sh/essays/how-paint-bike-shed-kafka-topic-naming-conventions)
+        - 위 링크에서는 <message type>.<dataset name>.<data name>.<data format> 형식을 추천함
+          - Message type : logging, queuing, tracking, etl/db, streaming, push, user
+          - dataset name : 토픽을 하나로 묶기 위한 카테고리. DB 이름과 유사
+          - data name : DB Table 이름과 유사
+          - data format : avro, json, text, protobuf, csv, log
+          - use snake_case
