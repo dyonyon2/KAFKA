@@ -5,7 +5,9 @@
 - Section 5 : KAFKA Java Programming
 - Section 6 : KAFKA simple wikimedia Project and advanced Producer configuration
 - Section 7 : OpenSearch Consumer and advanced Consumer configurations
-- Section 8 : KAFKA API
+- Section 8 : KAFKA 확장 API & 실제 사례
+- Section 9 : KAFKA 기업 가이드
+- Section 10 : 고급 KAFKA
 
 
 
@@ -597,7 +599,7 @@
   	    - client.rack 을 Consumer가 실행되는 data Center ID로 설정
 *** admin@conduktor.io / admin
 
-- Section 8 : KAFKA 확장 API
+- Section 8 : KAFKA 확장 API & 실제 사례
 	- 다양한 KAFKA Advanced API가 있음
 	  - KAFKA Connect solves External Source => KAFKA, or KAFKA => External Sink
 	  - KAFKA Streams solves 토픽 -> 토픽으로 데이터 전송
@@ -742,3 +744,174 @@
           - data name : DB Table 이름과 유사
           - data format : avro, json, text, protobuf, csv, log
           - use snake_case
+    - KAFKA 실제 사례 1 _ 비디오 분석 MovieFlix
+      - MovieFlix는 TV 쇼나 영화를 사용자의 요구에 따라 보여주는 회사. 아래와 같은 요구사항이 있음
+        - 사용자가 마지막으로 봤던 곳에서 다시 재생하는 기능
+        - 사용자의 Profile을 실시간으로 만드는 기능
+        - 사용자에게 다음에 볼 영상을 실시간으로 추천하는 기능
+        - 모든 데이터를 Analytics Store에 저장하는 기능
+      - 여기서 KAFKA를 어디서 어떻게 사용할까?
+        - KAFKA Architecture
+	        - Video Player -> Video Position Service(Producer) -> KAFKA(Show Position Topic) -> Resuming Service(Consumer) -> Video Player
+	        - KAFKA(Show Position Topic) -> KAFKA Streams(Recommendation Engine in Real Time) -> KAFKA(Recommendations Topic) -> Recommendations Service(Consumer) -> Movies and TV Shows Portal
+	        - KAFKA(Show Position Topic & Recommendations Topic) -> KAFKA Connect(Analytics consumer) -> Analytics Store(Hadoop)
+	      - show_position Topic:
+	        - 많은 사용자가 Producer가 되는 Topic, Data 양이 많다면 distributed되어야함.
+	        - user_id를 Key로 선정하여, 한 유저의 데이터에 대해서는 순서를 유지함
+	      - recommendations Topics:
+ 					- KAFKA Streams를 통해 recommendation engine으로 분석을 할 것이며, 아마 Topic Data 양이 적을 것임
+ 					- user_id를 Key로 선정하고, Partition 개수를 show_position보다는 적게 설정할 것임.
+    - KAFKA 실제 사례 2 _ IoT GetTaxi
+      - GetTaxi는 사용자와 택시 운전자를 즉시 매칭시켜주며 아래와 같은 요구사항이 있음
+        - 사용자는 가까이 있는 택시와 매칭되어야함
+        - 사용자수가 많거나 택시 운전자가 적을 때 가격은 오를 수 있음
+        - 모든 위치 정보(타기전, 탑승중)들은 Analytics Store에 저장되어, 비용을 정확하게 측정
+      - 여기서 KAFKA를 어디서 어떻게 사용할까?
+        - KAFKA Architecture
+	        - User Application -> User Position Service(Producer) -> KAFKA(User_position topic) -> Surge Pricing computation Model(KAFKA Streams) -> KAFKA(Surge pricing Topic) -> Taxi Cost Service(Consumer) -> User Application
+	        - Taxi Driver Application -> Taxi Position Service(Producer) -> KAFKA(Taxi_position topic) -> Surge Pricing computation Model(KAFKA Streams) -> KAFKA(Surge pricing Topic) -> Taxi Cost Service(Consumer) -> User Application
+	        - KAFKA(user_position, taxi_position, Surge Pricing) -> Analytics Consumer(KAFKA Connect) -> Analytics Store(Amazon S3)
+	      - user&taxi postion topics:
+	        - 여러 Producer가 있고 데이터 양이 많기에 distributed 되어야함.
+	        - Key는 user_id, taxi_id로 설정, 데이터의 수명은 짧은 편이기에, retention 기간을 짧게 설정
+      - surge_pricing topic:
+        - KAFKA Streams Application으로부터 surge pricing 계산 결과를 받음
+        - 날씨, 이벤트 등의 다른 정보들을 추가하여 계산을 더 정확하게 할 수 있음
+    - KAFKA 실제 사례 3 _ CQRS(Command and Query Responsibility Segregation) MySocialMedia
+      - MySocialMedia는 유저가 이미지를 올리고 다른 사용자가 likes, comments를 사용하여 반응하는 서비스 SNS. 요구사항은 아래와 같음
+        - 유저들은 Post, like and comment가 가능해야함
+        - 유저들은 실시간으로 각 포스트에대한 likes와 comments의 총 숫자를 볼 수 있어야함
+        - 오픈 첫날에는 대량의 데이터가 예상됨
+        - 유저들은 인기가 높은 포스트를 볼 수 있어야함
+      - 여기서 KAFKA를 어디서 어떻게 사용할까?
+        - User posts -> Posting Service(Producer) -> KAFKA(Posts topic) -> Total likes/comments computation(KAFKA Streams) -> KAFKA(posts_with_counts) -> Refresh Feed Service(Consumer) -> Website
+        - User likes/comments -> Like/Comment Serivce(Producer) -> KAFKA(likes topic, comments topics) -> Total likes/comments computation(KAFKA Streams) -> KAFKA(posts_with_counts) -> Refresh Feed Service(Consumer) -> Website
+        - KAFKA(posts, likes, comments topic 혹은 posts_with_counts topic) -> Trending posts in the past hour(KAFKA Streams) -> KAFKA(Trending_posts topic) -> Trending Feed Service(Consumer) -> Website
+      - Posts topic:
+        - 여러 Producer가 존재, 많은 양이 있으므로 distributed -> 여러 Partition
+        - user_id를 key로 두고, retention 기간을 길게 설정
+      - Likes, Comments topic:
+        - 여러 Producer가 존재, 많은 양이 있으므로 distributed -> 여러 Partition
+        - post_id를 key로 둠
+      - Data는 이벤트 방식의 형식을 갖춰야함
+        - ex) User_123이 Post_1032를 Post함. ...like함. ...delete함. ...comment를 남김 등등
+    - KAFKA 실제 사례 4 _ Finance Application MyBank
+      - MyBank는 온라인 은행으로, 실시간 은행 서비스와 거액의 이체가 발생시 유저에게 알려주는 기능이 있음. 요구사항은 아래와 같음
+        - Transaction 데이터는 이미 DB에 존재함
+        - 거액 기준은 각 사용자가 앱에서 설정함
+        - 알람은 사용자에게 실시간으로 전송되어야함
+      - 여기서 KAFKA를 어디서 어떻게 사용할까?
+        - DB of Transactions -> KAFKA Connect Source(CDC Connector. Debezium) -> KAFKA(bank_transactions topic) -> Real time Big Transactions Detection(KAFKA Streams) -> KAFKA(User_alerts topic) -> Notification Service(Consumer) -> Users see notifications in their apps
+        - Users set threshold in Apps -> APP Threshold Serivce(Producer) -> KAFKA(user_settings topic) -> Real time Big Transactions Detection(KAFKA Streams) -> KAFKA(User_alerts topic) -> Notification Service(Consumer) -> Users see notifications in their apps
+      - bank_transactions topic:
+        - KAFKA Connect Source는 존재하는 DB에서 데이터를 가져오는데 좋은 방법
+        - CDC(Change Data Capture) Connector를 사용하면 좋음
+      - KAFKA Streams Application:
+      	- 사용자가 세팅을 변경한 뒤에, 과거 Transaction은 알람 트리거하지 않음
+      - user_threshold topic:
+      	- 이벤트 형식(User123 enabled threshold at $1000 at 12pm on July 12th 2023)으로 데이터를 보내는 것 보다, state 방식(User123:threshold $1000)으로 데이터를 보내는 것이 효과적
+    - KAFKA 실제 사례 5 _ Big Data Ingestion(수집, 적재)
+      - 기존의 Connector들은 데이터를 받아서 KAFKA에 올리고 그것을 HDFS, Amazon S3 and ElasticSearch같은 곳으로 전달하였음
+      - KAFKA는 실시간 Application을 위해 Speed Layer를 제공하고, Batch 방식의 데이터 적재를 위해 Slow Layer를 제공함
+      - Big Data Ingestion 2가지 패턴
+        - 데이터 Producer -> KAFKA -> Spark/Storm/Flink 등등 -> Real time analytics/Dashboards/Alerts/Apps/Consumers (Real Time)
+        - 데이터 Producer -> kAFKA -> KAFKA Connect -> Hadoop/Amazon S3/RDBMS -> Data Science/Reporting/Audit/Backup/Long term Storage (Batch)
+    - KAFKA 실제 사례 6 _ Logging & Metrics Aggregation(집계)
+      - Application -> Log Forwarders -> KAFKA(application_logs topic) -> KAFKA Connect Sink -> Splunk
+      - Application -> Metric collectors -> KAFKA(application_metrics topic) -> KAFKA Connect Sink -> Splunk
+
+- Section 9 : KAFKA 기업 가이드
+  - KAFKA Cluster Setup - High Level Architecture
+    - Cluster를 setup하는 것은 쉽지 않음.
+    - 각 Zookeeper와 Broker를 각각의 서버에 독립시켜야하고(장애 발생시 하나만 터지게), 모니터링도 필요하며, KAFKA 명령어도 숙달되어야함
+    - 그래서 KAFKA as a Service의 형태로 여러 기업에서 관리해주는 것이 있음(Amazon MSK, Confluent Cloud, CloudKarafka, Instaclustr, Upstash, etc...)
+      - 운영 부담이 적음
+    - Broker 개수는 throughput, data retention, replication factor등 여러 계산해야할 것이 많고, 적용하는 각각의 환경에서 테스트를 많이 해봐야함
+    - Broker 뿐만 아니라 KAFKA Connect Clusters, KAFKA Schema Registry(High Availability를 위해 최소 2개), UI Tools, Admin Tools for automated workflows, Automate 등 할게 많음
+  - KAFKA Monitoring and Operations
+    - KAFKA Monitoring
+      - KAFKA는 JMX를 통해서 모든 KAFKA Metric들을 볼 수 있음
+      - Common places to host the KAFKA Metrics:
+        - ELK (ElasticSearch+Kibana), Datadog, NewRelic, Confluent Control Centre, Promotheus
+      - 몇몇 중요한 지표들:
+        - Under Replicated Partitions : ISR(In-Sync Replicas)에 문제가 있는 Partitions의 개수 => 파티션들이 싱크가 안되고 있는 것. 시스템 부하가 
+        - Request Handlers : 쓰레드 이용률. 전반적인 KAFKA Broker의 이용률로 보면됨.
+        - Request timing : 요청에 응답하는데 소요되는 시간.
+    - KAKFA Operations
+      - KAFKA 운영팀이 수행해야하는 tasks:
+        - Rolling Restart of Brokers (클러스터를 구성하는 노드를 하나씩 restart 하는 것)
+        - Topic&Broker의 설정 업데이트
+        - Rebalancing Partitions
+        - Increasing/Decreasing replication factor
+        - Adding a Broker
+        - Replacing a Broker
+        - Removing a Broker
+        - KAFKA Cluster 업그레이드(Without downtime)
+  - KAFKA 보안
+    - 현재 KAFKA 보안 
+	    - 어느 Client도 KAFKA Cluster에 접근할 수 있음(No authentication, 인증X)
+	    - 어느 Client든 모든 Topic의 데이터를 public/consume할 수 있음(No authorisation, 권한 부여 X)
+	    - 모든 데이터가 암호화되어 있지 않아서 네트워크에서 다 볼수 있음(No encryption)
+	    - 데이터를 intercept할 수 있고, bad 데이터를 publish하거나, 훔칠수 있고, 토픽을 삭제할 수 있는 문제가 있다.
+	  - In-flight encryption in KAFKA
+	    - Encryption in KAFKA ensures that the data exchanged between clients and brokers is secret to routers on the way.
+	    - HTTPS와 비슷함.
+	  - Authentication(SSL&SASL) in KAFKA
+	    - Authentication in KAFKA ensures that only clients that can prove their identity can connect to KAFKA Cluster
+	    - login 개념과 비슷(username/password)
+	    - SSL Authentication
+	    	- clients authenticate to KAFKA using SSL certificates
+	    - SASL/PLAINTEXT
+	    	- clients authenticate using username/password
+	      - Must enable SSL encryption broker-side as well
+	      - Changes in passwords require brokers reboot(good for dev only)
+	    - SASL/SCRAM 
+	    	- username/password with using salt
+	      - Must enable SSL encryption broker-side as well
+	      - Authentication data in Zookeeper(until removed)
+	    - SASL/GSSAPI (Kerberos)
+	      - Kerberos : such as Microsoft Active Directory
+	    - SASL/OAUTHBEARER
+	      - OAUTH2 token for authentication.
+	  - Authorisation in KAFKA
+	    - ACL(Access Control List)는 관리자에의해 유지되어야함
+	  - KAFKA Security - Putting it all together
+	    - Encryption + Authentication + Authorisation => KAFKA Security
+	- KAKFA Multi Cluster & Replication
+	  - Replication Application은 결국 Consumer와 Producer 합친 것
+    - Tools
+      - Mirror Maker2 : Open-source KAFKA Connector이며, 클러스터의 데이터를 다른 클러스터로 복제함
+      - Netflix uses Flink : 넷플릭스에서 만든 Application
+      - Uber uses uReplicator : Mirror Maker1의 성능 문제를 해결한 Uber에서 만든 Application
+      - Comcast는 open-source KAFKA Connect Source를 가지고 자사 Application을 만듬
+      - Confluent도 직접 자사 KAFKA Connect Source를 만듬(유료)
+    - Replicating은 offset을 보존하지는 않고 데이터만 복제함. 어떤 offset의 데이터가 다른 클러스터의 동일 offset의 데이터와 동일한 것을 보장할 수 없음
+    - 구조
+      - Active / Active (클러스터 간 서로 write가 가능)
+        - 장점:
+          - 사용자와 더 가까이있는 Data Center를 이용할 수 있어서 성능이 좋음
+          - Redundancy(중복)와 Resilience(회복력)도 장점. 
+        - 단점:
+          - 양방향 쓰기가 가능하기 때문에, 데이터를 읽을 때 충돌을 피해야함
+      - Active / Passive
+        - 장점:
+          - 구성이 쉬움.
+          - 데이터 접근이나 충돌 처리 등 구조적인 복잡함이 없음
+        - 단점:
+          - Cluster의 낭비, 메인 Cluster Failover시 데이터 손실이나 중복이 발생
+  - Client와 KAFKA사이의 Communications 이해
+    - Advertised Listener : KAFKA 설정 내에 가장 중요한 설정
+      - ex) KAFKA CLIENT <-> KAFKA BROKER 통신 설정
+      	1. Client가 BROKER의 public IP를 사용하여 연결 요청
+      	2. Broker가 거절! 연결하려면 Advertised Host Name을 써야함!
+      	3. Advertised Host IP는 ~.~.~.~이거야! 이걸 써서 연결해!
+      	4. Client가 알려준 Advertiesed Host IP로 접속하여 연결!
+      	*** 만약 ADV_HOST(Advertised Listener)가 private IP라면, KAFKA Client가 Broker와 동일한 네트워크 내에 존재해야 연결! 다른 네트워크라면 연결할 수 없음! ***
+      - ex) 그러면 ADV_HOST를 public IP로 설정하면?
+        *** 정상 동작, but Public IP가 변경되면 연결 실패! *** 
+    - Client가 private network 내에 존재하면 advertised.listeners을:
+      - internal private IP 혹은 private DNS hostname으로 설정!
+    - Client가 public network내에 존재하면 advertised.listeners을:
+      - external public IP 혹은 external public hostname pointing to the public IP로 설정! 
+      - 이 경우, Cluster가 public IP 즉 공개적으로 노출되는 것은 유의해야함
+      
