@@ -7,7 +7,7 @@
 - Section 7 : OpenSearch Consumer and advanced Consumer configurations
 - Section 8 : KAFKA 확장 API & 실제 사례
 - Section 9 : KAFKA 기업 가이드
-- Section 10 : 고급 KAFKA
+- Section 10 : 고급 KAFKA 토픽 구성
 
 
 
@@ -914,4 +914,69 @@
     - Client가 public network내에 존재하면 advertised.listeners을:
       - external public IP 혹은 external public hostname pointing to the public IP로 설정! 
       - 이 경우, Cluster가 public IP 즉 공개적으로 노출되는 것은 유의해야함
-      
+
+- Section 10 : 고급 KAFKA 토픽 구성
+  - 토픽 구성 변경
+	  - 토픽 생성
+	  	- ./kafka-topics.sh  --create --bootstrap-server localhost:9092 --topic configured-topic --replication-factor 1 --partitions 3
+	  - 토픽 describe
+	    - ./kafka-topics.sh  --describe --bootstrap-server localhost:9092 --topic configured-topic
+	  - KAFKA 설정 명령어 : ./kafka-configs.sh
+	    - Describe : ./kafka-configs.sh --bootstrap-server localhost:9092 --entity-type topics --entity-name configured-topic --describe
+	    - Add config : ./kafka-configs.sh --bootstrap-server localhost:9092 --entity-type topics --entity-name configured-topic --alter --add-config min.insync.replicas=2
+	    - Delete config : ./kafka-configs.sh --bootstrap-server localhost:9092 --entity-type topics --entity-name configured-topic --alter --delete-config min.insync.replicas
+	- Segments & Index
+	  - Segments Setting
+		  - Topic은 Partitions로 구성되고, Partition은 Segments(files)로 구성된다.
+		  - 각 Segment는 특정 범위의 Offset을 가짐
+		    - ex) Seg0 (offset 0-957), Seg1 (offset 958-1675)...
+		  - 하나의 Partition 내에는 오직 1개의 segment만 ACTIVE 상태이다.
+		  - 2가지 Segment 세팅:
+		    - log.segment.bytes : 단일 segment의 최대 Byte size (default 1GB)
+		      - log.segment.bytes를 작게 설정하면, Log compaction이 자주 일어나고, Partition별로 더 많은 Segment가 생기고, KAFKA는 더 많은 files을 열어놓아 결국 T oo Many open files 에러가 발생함
+		    - log.segment.ms : KAFKA가 segment가 full이 안됐지만 commit을 기다리는 시간.(1 week)
+		      - 1주일 기다렸는데 segment가 다 차지 않아도, 해당 segment를 close하고 새로운 segment를 생성함
+		      - log.segment.ms를 작게 설정하면, Log Compaction의 최대 주기를 설정하는 것이고, Log Compaction이 더 자주 일어나고, cleanup도 자주 일어남
+		  - Segment는 2개의 Index가 있음
+		    - An offset to position index : KAFKA가 특정 오프셋에서 특정 메시지를 찾기 위해 읽어야할 곳을 알려줌
+		    - A timestamp to offset index : 특정 Timestamp를 통해 KAFKA가 메시지를 찾도록 도와줌
+  - Log Cleanup Policies
+    - KAFKA Cluster는 log cleanup 정책에 따라서 data를 expire함
+    - 왜 Log Cleanup을 해야하나? 
+      - KAFKA내의 데이터를 지움으로써:
+	      - Disk 내의 데이터 크기를 조절하고, 오래된 데이터를 삭제함
+	      - KAFKA Cluster의 maintenance 작업을 제한하는데에도 도움이 됨
+	  - 언제 Log Cleanup이 일어나는가?
+	    - Partition의 segment가 생성될 때마다 일어남. 즉 Smaller/more segment는 Log Cleanup이 더 자주 일어나는 것을 의미
+	    - But 너무 자주 일어나면 CPU, RAM 자원을 낭비하게 됨
+	    - Cleaner가 cleanup해야할 항목이 있는지 log.cleaner.backoff.ms마다 체크함(15초 기본값)
+    - Policy1 : log.cleanup.policy=delete (모든 사용자 토픽의 기본값)
+      - 데이터가 만들어진 시기에 따라 삭제됨(1주 기본값)
+      - log의 최대 크기에 따라 삭제됨(-1이 기본값. 사이즈는 무한하지만 수명은 1주일)
+      - 해당 정책에 영향을 미치는 설정:
+        - log.retention.hours:
+          - 데이터가 유지되는 시간 (기본값 168hour - 1주일)
+          - Higher number(Disk 공간 차지), Lower number(Disk 공간은 줄겠지만, Consumer가 down되거나 consume하지 않으면 Data를 유실할 수 있음)
+          - 시간 단위가 hour말고 ms와 minutes도 있음(적을수록 우선순위 높음)
+        - log.retention.bytes:
+          - 각 Partition에 있는 최대 Bytes 크기 (-1 기본값, infinite를 의미)
+          - Log 사이즈를 일정 기준값 이하로 유지하고 싶을 때 유용함
+      - 시간 or Byte 크기에 의하여 Segment를 지울 수 있음
+    - Policy2 : log.cleanup.policy=compact (_ _ consumer_offsets의 모든 사용자 토픽의 기본값)
+      - 확인 : ./kafka-topics.sh  --describe --bootstrap-server localhost:9092 --topic _ _ consumer_offsets
+      - 가장 최근 발생한 Message의 Key를 기준으로 삭제됨. 즉 전의 모든 키는 Active segment가 커밋된 다음 삭제된다는 의미
+      - 무한한 time, space retention
+      - Log compaction은 파티션 내에 특정 키의 마지막으로 알려진 값이 포함되어 있다는 의미. log에 key를 가장 최신으로 업데이트하는 개념임. data에 대한 전체 history가 아니라 SNAPSHOT이 필요할 때 유용함
+        - ex) user(key)별 연봉 데이터 topic에서 동일 key의 데이터가 들어오면 log compaction이 발생하여, 새로운 segment에는 key의 최신 데이터만 유지하고 이전 것은 삭제하는 방식!
+      - Log Compaction Guarantees : 
+        - 모든 consumer는 log의 tail부터 데이터를 읽을때 토픽으로 전송된 모든 메시지를 순서대로 볼 수 있고, Log Compaction은 일부 메시지만 삭제할 뿐이고, 순서는 재정렬하지 않고, 메시지의 offset도 바뀌지 않는다.
+        - 삭제된 records는 delete.retention.ms(24시간 기본값)동안 consumer가 볼 수 있음
+      - Log Compaction Myth Busting
+        - 중복 데이터를 KAFKA로 보내는 것/읽는 것을 예방하지 못함
+        - Log Compaction은 실패하는 경우도 종종 있음
+      - 해당 정책에 영향을 미치는 설정:
+        - segment.ms (default 7days)
+        - segment.bytes (default 1G)
+        - min.compaction.lag.ms (default 0)
+        - delete.retention.ms (default 24hours)
+        - min.cleanable.dirty.ratio (default 0.5) : 높으면 정리 빈도는 낮아지고 효율성 증가. 낮아지는 것은 반대
