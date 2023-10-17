@@ -980,3 +980,24 @@
         - min.compaction.lag.ms (default 0)
         - delete.retention.ms (default 24hours)
         - min.cleanable.dirty.ratio (default 0.5) : 높으면 정리 빈도는 낮아지고 효율성 증가. 낮아지는 것은 반대
+  - unclean.leader.election.enable
+    - ISR이 offline이 되어 Out of Sync가 발생하였을 때 취할 수 있는 방법 2가지
+      - ISR이 online이 될때까지 기다린다
+      - unclean.leader.election.enable=true로 설정하여 non ISR Partitions에 producing한다.
+    		- 가용성을 높일 순 있지만, 데이터를 잃을 수 있다.
+    		- 데이터 유지보다 가용성이 훨씬 중요할 때만 사용하는 위험한 설정임
+  - KAFKA에서 대용량 전송
+    - 토픽 메시지당 1MB가 default 이고, 이보다 더 큰 메시지는 비효율적이고 anti-pattern임
+    - 큰 메시지를 전송하는 2가지 접근:
+      - 1. external Storage를 사용하는 것 : 데이터를 HDFS, Amazon S3, Google Cloud Storage, etc...에 보내놓고, 메시지의 reference를 KAFKA에 보내는 방식
+      - 2. KAFKA parameter 수정 : Broker, Producer, Consumer setting 변경
+      	- ex) 10MB 세팅
+      	  - Topic-wise, KAFKA-side, set max message size to 10MB:
+	      	  - Broker Side : message.max.bytes 변경
+	      	  - Topic Side : max.message.bytes 변경
+      	  - Broker-wise, set max replication fetch size to 10MB
+      	    - replica.fetch.max.bytes=10485880 (in server.properties)
+      	  - Consumer-side, must increase fetch size of the consumer will crash:
+      	    - max.partition.fetch.bytes=10485880
+      	  - Producer-side, must increase the max request size
+      	    - max.request.size=10485880
