@@ -1,16 +1,23 @@
-- S/W 개발
-  - (Past) : Monolith Architecture. 모든 서비스가 하나의 큰 Application안에 존재하고 DB를 공유하여 사용 => 과부하되면 실패
-  - (Current) : Microservice Architecture. 각 서비스가 micro service로 분리되어 있고, DB가 따로 있다. micro service들이 communication Protocol을 통해 interact함 => 통신이 스파게티처럼 얽혀있음 => 그래서 발전된 오늘날의 MicroServices Architecture은 API와 Event Streaming Platform(Middleware)을 두어 interact하는 형태
-    - Event Streaming Platform은 application이 stream of record를 produce하고 consume하게함(like a messaging system). Stream of Events도 
-- Traditional Messaging System VS KAFKA Streaming Platform
-  - Traditional Messaging System
-    - 메시지 지속성이 없음(일시적임 = 한번 읽으면 제거함)
-    - 브로커에게 메시지 추적 책임이 있음
-    - 특정한 컨슈머를 지정
-    - 분산 시스템이 아님
-  - KAFKA Streaming Paltform
-    - retention 시간만큼 이벤트(데이터)가 저장되며, immutable하다(한번 KAFKA로 전송하면 수정 불가)
-    - 컨슈머에게 메시지 추적 책임이 있음
-    - 어느 컨슈머나 메시지를 access할 수 있음
-    - 분산 시스템이다
-- KAFKA의 기본적인 내용은 스킵(자세한 정리는 KAFKA Basic 참고)
+- Section 1~6 : KAFKA 기본 내용 + CLI
+- Section 7 : Build Spring boot KAFKA Producer
+
+
+- Section 1~6 : KAFKA 기본 내용 + CLI
+  - S/W 개발
+    - (Past) : Monolith Architecture. 모든 서비스가 하나의 큰 Application안에 존재하고 DB를 공유하여 사용 => 과부하되면 실패
+    - (Current) : Microservice Architecture. 각 서비스가 micro service로 분리되어 있고, DB가 따로 있다. micro service들이 communication Protocol을 통해 interact함 => 통신이 스파게티처럼 얽혀있음 => 그래서 발전된 오늘날의 MicroServices Architecture은 API와 Event Streaming Platform(Middleware)을 두어 interact하는 형태
+      - Event Streaming Platform은 application이 stream of record를 produce하고 consume하게함(like a messaging system). Stream of Events도 
+  - Traditional Messaging System VS KAFKA Streaming Platform
+    - Traditional Messaging System
+      - 메시지 지속성이 없음(일시적임 = 한번 읽으면 제거함)
+      - 브로커에게 메시지 추적 책임이 있음
+      - 특정한 컨슈머를 지정
+      - 분산 시스템이 아님
+    - KAFKA Streaming Paltform
+      - retention 시간만큼 이벤트(데이터)가 저장되며, immutable하다(한번 KAFKA로 전송하면 수정 불가)
+      - 컨슈머에게 메시지 추적 책임이 있음
+      - 어느 컨슈머나 메시지를 access할 수 있음
+      - 분산 시스템이다
+  - KAFKA의 기본적인 내용은 스킵(자세한 정리는 KAFKA Basic 참고)
+- Section 7 : Build Spring boot KAFKA Producer
+  - 프로젝트 세팅 : Spring initializr -> Gradle-Groovy project -> web & Spring for Apache Kafka & Validation & Lombok(Logging을 위해) 의존성 추가
