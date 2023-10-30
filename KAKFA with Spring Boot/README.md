@@ -21,3 +21,99 @@
   - KAFKA의 기본적인 내용은 스킵(자세한 정리는 KAFKA Basic 참고)
 - Section 7 : Build Spring boot KAFKA Producer
   - 프로젝트 세팅 : Spring initializr -> Gradle-Groovy project -> web & Spring for Apache Kafka & Validation & Lombok(Logging을 위해) 의존성 추가
+  - KAFKA Template : 스프링 라이브러리. Produce records in a KAFKA Topic
+    - send 절차 : Send() -> Serializer() -> Partitioner -> Record Accumulator (버퍼에 모인 뒤 KAFKA Topic에 전송됨) -> 토픽 전송
+      - Record Accumulator에 파티션 개수만큼의 Record Batch가 있고, 각 Batch가 batch.size만큼 채워진 후에 토픽으로 전달된다.
+      - linger.ms를 통해서 버퍼를 다 채우지 않고, linger.ms만큼 데이터가 대기한 뒤 전송될 것임
+    - configuring KAFKA Template:
+      - bootstrap-servers, key-serializer, value-serializer
+  - KAFKA Admin : 스프링 카프카 라이브러리. 토픽을 생성
+    - How to create a topic from Code?
+      - Create a Bean of type KafkaAdmin/NewTopic in Spring Configuration
+
+  - KAFKA Topic 자동 생성: 
+    - ex) @Configuration
+          public class AutoCreateConfig {
+
+              @Value("${spring.kafka.topic}")
+              public String topic;
+
+              @Bean
+              public NewTopic libraryEvents(){
+                  return TopicBuilder.name(topic).partitions(3).replicas(1).build();
+              }
+          }
+  - KAFKA Producer:
+    - ex) controller.java 예시
+          @RestController
+          @Slf4j
+          public class LibraryEventsController {
+
+              private final LibraryEventsProducer libraryEventsProducer;
+
+              public LibraryEventsController(LibraryEventsProducer libraryEventsProducer) {
+                  this.libraryEventsProducer = libraryEventsProducer;
+              }
+
+              @PostMapping("/v1/libraryevent")
+              public ResponseEntity<LibraryEvent> postLibraryEvent(
+                      @RequestBody LibraryEvent libraryEvent
+              ) throws JsonProcessingException {
+          //        log.info("libraryEvenet : {}",libraryEvent);
+                  //invoke the kafka producer
+                  libraryEventsProducer.sendLibraryEvent(libraryEvent);
+
+                  return ResponseEntity.status(HttpStatus.CREATED).body(libraryEvent);
+              }
+          }
+    - ex) producer.java 예시
+          public class LibraryEventsProducer {
+
+          @Value("${spring.kafka.topic}")
+          public String topic;
+
+          private final KafkaTemplate<Integer, String> kafkaTemplate;
+
+          private final ObjectMapper objectMapper;
+
+          public LibraryEventsProducer(KafkaTemplate<Integer, String> kafkaTemplate, ObjectMapper objectMapper) {
+              this.kafkaTemplate = kafkaTemplate;
+              this.objectMapper = objectMapper;
+          }
+
+          public void sendLibraryEvent(LibraryEvent libraryEvent) throws JsonProcessingException {
+              var key= libraryEvent.libraryEventId();
+              var value = objectMapper.writeValueAsString(libraryEvent);
+              var completableFuture = kafkaTemplate.send(topic, key, value);
+              completableFuture.whenComplete((sendResult, throwable) -> {
+                  if(throwable!=null){
+                      handleFauilure(key, value, throwable);
+                  } else{
+                      handleSuccess(key, value, sendResult);
+                  }
+              });
+          }
+
+          private void handleSuccess(Integer key, String value, SendResult<Integer, String> sendResult) {
+              log.info("Message sent successfully for the key : [} and the value : {}, partition is {}", key, value, sendResult.getRecordMetadata().partition());
+          }
+
+
+          private void handleFauilure(Integer key, String value, Throwable ex) {
+              log.error("Error sending the message and the exception is {}", ex.getMessage(),ex);
+          }
+      }
+
+
+          public void sendLibraryEvent(LibraryEvent libraryEvent) throws JsonProcessingException {
+              var key= libraryEvent.libraryEventId();
+              var value = objectMapper.writeValueAsString(libraryEvent);
+              var completableFuture = kafkaTemplate.send(topic, key, value);
+              completableFuture.whenComplete((sendResult, throwable) -> {
+                  if(throwable!=null){
+                      handleFauilure(key, value, throwable);
+                  } else{
+                      handleSuccess(key, value, sendResult);
+                  }
+              });
+          }
