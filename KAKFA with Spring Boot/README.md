@@ -1,7 +1,10 @@
+Abstract
 - Section 1~6 : KAFKA 기본 내용 + CLI
 - Section 7 : Build Spring boot KAFKA Producer
+- Section 8~9 : Unit Testing using JUnit5
 
 
+Content
 - Section 1~6 : KAFKA 기본 내용 + CLI
   - S/W 개발
     - (Past) : Monolith Architecture. 모든 서비스가 하나의 큰 Application안에 존재하고 DB를 공유하여 사용 => 과부하되면 실패
@@ -43,7 +46,7 @@
                   return TopicBuilder.name(topic).partitions(3).replicas(1).build();
               }
           }
-  - KAFKA Producer:
+  - KAFKA Producer: 3가지 방식 (동기, 비동기, Record)
     - ex) controller.java 예시
           @RestController
           @Slf4j
@@ -66,54 +69,113 @@
                   return ResponseEntity.status(HttpStatus.CREATED).body(libraryEvent);
               }
           }
-    - ex) producer.java 예시
-          public class LibraryEventsProducer {
-
-          @Value("${spring.kafka.topic}")
-          public String topic;
-
-          private final KafkaTemplate<Integer, String> kafkaTemplate;
-
-          private final ObjectMapper objectMapper;
-
-          public LibraryEventsProducer(KafkaTemplate<Integer, String> kafkaTemplate, ObjectMapper objectMapper) {
-              this.kafkaTemplate = kafkaTemplate;
-              this.objectMapper = objectMapper;
-          }
-
+    - ex) producer.java 비동기 예시
           public void sendLibraryEvent(LibraryEvent libraryEvent) throws JsonProcessingException {
-              var key= libraryEvent.libraryEventId();
-              var value = objectMapper.writeValueAsString(libraryEvent);
-              var completableFuture = kafkaTemplate.send(topic, key, value);
-              completableFuture.whenComplete((sendResult, throwable) -> {
-                  if(throwable!=null){
-                      handleFauilure(key, value, throwable);
-                  } else{
-                      handleSuccess(key, value, sendResult);
-                  }
-              });
-          }
+                var key= libraryEvent.libraryEventId();
+                var value = objectMapper.writeValueAsString(libraryEvent);
+                var completableFuture = kafkaTemplate.send(topic, key, value);
+                completableFuture.whenComplete((sendResult, throwable) -> {
+                    if(throwable!=null){
+                        handleFauilure(key, value, throwable);
+                    } else{
+                        handleSuccess(key, value, sendResult);
+                    }
+                });
+            }
+      - *** 위 예제에서 completableFuture.whenComplete가 비동기로 진행됨
+        1. Blocking call - get metadata about the kafka cluster
+        2. Send Message happens - return a CompletableFuture
+    - ex) producer.java 동기 예시
+      public SendResult<Integer, String> sendLibraryEvent_approach2(LibraryEvent libraryEvent) throws JsonProcessingException, ExecutionException, InterruptedException {
+          var key= libraryEvent.libraryEventId();
+          var value = objectMapper.writeValueAsString(libraryEvent);
+          var sendResult = kafkaTemplate.send(topic, key, value).get();
+          log.info("in sendlibrary event after template send&get");
+          handleSuccess(key,value,sendResult);
+          return sendResult;
+      }
+      - kafkaTemplate.send(topic, key, value)에 get()을 붙히면 Result를 받을 때까지 기다림 (block, 동기)
+    - ex) producer.java Record 예시
+      public CompletableFuture<SendResult<Integer, String>> sendLibraryEvent_approach3(LibraryEvent libraryEvent) throws JsonProcessingException {
+          var key= libraryEvent.libraryEventId();
+          var value = objectMapper.writeValueAsString(libraryEvent);
 
-          private void handleSuccess(Integer key, String value, SendResult<Integer, String> sendResult) {
-              log.info("Message sent successfully for the key : [} and the value : {}, partition is {}", key, value, sendResult.getRecordMetadata().partition());
-          }
+          var producerRecord = buildProducerRecord(key,value);
 
+          var completableFuture = kafkaTemplate.send(producerRecord);
+          log.info("in sendlibrary event after template send");
 
-          private void handleFauilure(Integer key, String value, Throwable ex) {
-              log.error("Error sending the message and the exception is {}", ex.getMessage(),ex);
-          }
+          return completableFuture.whenComplete((sendResult, throwable) -> {
+              if(throwable!=null){
+                  handleFauilure(key, value, throwable);
+              } else{
+                  handleSuccess(key, value, sendResult);
+              }
+          });
+      }
+      *** Record에 RecordHeader 추가할 수 있음
+      private ProducerRecord<Integer, String> buildProducerRecord(Integer key, String value) {
+          List<Header> recordHeaders = List.of(new RecordHeader("event-source","scanner".getBytes()));
+          return new ProducerRecord<>(topic, null, key, value, recordHeaders);
       }
 
+- Section 8~9 : Integration/Unit Testing using JUnit5
+  - Automated Test
+    - Why Automated Tests?
+      - Manual testing is time consuming
+      - Manual testing slows down the development
+      - Adding new changes are error prone
+    - What are Automated Tests?
+      - Automated tests are something that runs against your code base.
+      - Automated test are run as part of your build.
+      - Easy to capture bugs
+      - 종류 (UnitTest, Integration Test, End to End Test)
+      - Tools (JUnit, Spock)
+  - Integration Test
+    - Test combines all the independent layers of your code and make sure that they work as expected in collaboration.
+    - ex) @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+          class LibraryEventsControllerIntegrationTest {
 
-          public void sendLibraryEvent(LibraryEvent libraryEvent) throws JsonProcessingException {
-              var key= libraryEvent.libraryEventId();
-              var value = objectMapper.writeValueAsString(libraryEvent);
-              var completableFuture = kafkaTemplate.send(topic, key, value);
-              completableFuture.whenComplete((sendResult, throwable) -> {
-                  if(throwable!=null){
-                      handleFauilure(key, value, throwable);
-                  } else{
-                      handleSuccess(key, value, sendResult);
-                  }
-              });
+              @Autowired
+              TestRestTemplate testRestTemplate;
+              @Test
+              void postLibraryEvent() {
+                  HttpHeaders httpHeaders = new HttpHeaders();
+                  httpHeaders.set("content-type", MediaType.APPLICATION_JSON.toString());
+                  var httpEntity = new HttpEntity<>(TestUtil.libraryEventRecord(),httpHeaders);
+
+                  var responseEntity = testRestTemplate.exchange("/v1/libraryevent", HttpMethod.POST, httpEntity, LibraryEvent.class);
+
+                  assertEquals(HttpStatus.CREATED, responseEntity.getStatusCode());
+
+              }
           }
+      - KAFKA를 실제 KAFKA로 테스트를 하지 못하는 경우, EmbeddedKafka사용!
+    - ex) EmbeddedKafka를 위한 annotation 추가
+      @EmbeddedKafka(topics = "library-events")
+      @TestPropertySource(properties = {"spring.kafka.producer.bootstrap-servers=${spring.embedded.kafka.brokers}",
+              "spring.kafka.admin.properties.bootstrap.servers=${spring.embedded.kafka.brokers}"})
+  - Unit Test
+    - Test the just focuses on a single unit(method)
+    - Mocks the external dependencies
+    - ex) @WebMvcTest(LibraryEventsController.class)
+          class LibraryEventsControllerUnitTest {
+
+              @Autowired
+              MockMvc mockMvc;
+
+              @Autowired
+              ObjectMapper objectMapper;
+
+              @MockBean
+              LibraryEventsProducer libraryEventsProducer;
+
+              @Test
+              void postLibraryEvent() throws Exception {
+                  var json = objectMapper.writeValueAsString(TestUtil.libraryEventRecord());
+                  when(libraryEventsProducer.sendLibraryEvent_approach3(isA(LibraryEvent.class))).thenReturn(null);
+
+                  mockMvc.perform(MockMvcRequestBuilders.post("/v1/libraryevent").content(json).contentType(MediaType.APPLICATION_JSON)).andExpect(status().isCreated());
+              }
+          }
+  

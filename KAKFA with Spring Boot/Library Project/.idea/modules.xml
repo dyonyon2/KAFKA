@@ -3,6 +3,8 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/Library Project.iml" filepath="$PROJECT_DIR$/.idea/Library Project.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/library-events-producer.main.iml" filepath="$PROJECT_DIR$/.idea/modules/library-events-producer.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/library-events-producer.test.iml" filepath="$PROJECT_DIR$/.idea/modules/library-events-producer.test.iml" />
     </modules>
   </component>
 </project>
