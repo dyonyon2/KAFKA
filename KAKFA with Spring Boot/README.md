@@ -34,6 +34,8 @@ Content
     - How to create a topic from Code?
       - Create a Bean of type KafkaAdmin/NewTopic in Spring Configuration
 
+  - *** ProducerFactory에서 prop을 만들고 -> KafkaTemplate에서 ProducerFactory 가지고 KafkaTemplate을 만든다. (KafkaTemplate은 Spring Boot에서 Producer)
+
   - KAFKA Topic 자동 생성: 
     - ex) @Configuration
           public class AutoCreateConfig {
@@ -178,4 +180,110 @@ Content
                   mockMvc.perform(MockMvcRequestBuilders.post("/v1/libraryevent").content(json).contentType(MediaType.APPLICATION_JSON)).andExpect(status().isCreated());
               }
           }
-  
+  - Section 10 : Build Spring boot KAFKA Producer (PUT Method 추가)
+  - Section 11 : Important Configurations of KAFKA Producer 
+    - acks : KAFKA가 ack를 보내는 조건.
+      - acks = 0, 1 and -1 (all)
+        - acks = 1 -> 리더에 Message가 written 된 것을 보장
+        - acks = -1(all) -> 리더&모든 Replicas에 Message가 Written 된 것을 보장 (Default)
+        - acks = 0 -> 보장 X
+    - retries : 
+      - Integer Value = 0 ~ 2147483647
+      - Spring KAFKA에서는 2147483647이 default
+    - retry.backoff.ms : 
+      - milliseconds. 기본값은 100ms
+    - application.yml 파일에서 Producer Setting에서 설정 가능
+      - ex)
+          spring:
+            kafka:
+              producer:
+                bootstrap-servers: localhost:9092
+                key-serializer: org.apache.kafka.common.serialization.IntegerSerializer
+                value-serializer: org.apache.kafka.common.serialization.StringSerializer
+                properties:
+                  retries: 10
+
+  - Section 12 : Build Spring Boot KAFKA Consumer
+    - Spring Initializr :
+      - KAFKA, WEB, Validation, H2 DB, JPA 의존성 추가
+    - Spring KAFKA Consumer: 3가지 방법
+      - MessageListenerContainer을 Implement하는 방법:
+        - 1번 방법. KafkaMessageListenerContainer:
+          - MessageListenerContainer를 implement한 것.
+          - 데이터를 Poll하는 방식
+          - 데이터 처리 후에 Offset을 Commit
+          - 단일 쓰레드
+        - 2번 방법. ConcurrentMessageListenerContainer
+          - KafkaMessageListenerContainer 여러개로 생각하면 됨
+      - 3번 방법. @KafkaListener Annotation
+        - ConcurrentMessageListenerContainer을 기본값으로 사용함
+
+  - Section 13 : Consumer Groups and Consumer Offset Management
+    - Rebalance : Consumer가 추가/삭제 되었을 때, 파티션 리더가 재조정됨. 이를 rebalance라고 함
+    - Consumer Offset 옵션:
+      - RECORD, BATCH, TIME, COUNT, COUNT_TIME, MANUAL, MANUAL_IMMEDIATE
+    - Consumer Offset 옵션은 @Configuration이 달린 config class에서 kafkaListenerContainerFactory를 통해 설정을 추가해주면 된다. 
+      - ex) factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL)
+    - 하나의 KAFKA Listener에서 여러 Thread가 동작하도록 하는 설정
+      - ex) factory.setConcurrency(3); => 병렬처리 가능
+
+  - Section 14 : Persisting Library Events in DB - Using H2 InMemory DB
+    - h2 연결 :
+      - application.yml : 
+        spring:
+          datasource:
+            url: jdbc:h2:mem:testdb
+            driver-class-name: org.h2.Driver
+          jpa:
+            database: h2
+            database-platform: org.hibernate.dialect.H2Dialect
+            generate-ddl: true
+          h2:
+            console:
+              enabled: true
+      - http://localhost:8081/h2-console
+    - *** Lombok Annotation
+      - @Getter : getter 자동생성
+      - @Setter : setter 자동생성 
+      - @AllArgsConstructor : 모든 필드 값을 파라미터로 받는 생성자 생성
+      - @NoArgsConstructor : 파라미터가 없는 기본 생성자 생성
+      - @RequiredArgsConstructor : final이나 NonNull인 필드 값만 파라미터로 받는 생성자 생성
+      - @Data : @Getter, @Setter, @ToString, @EqualsAndHashCode, @RequiredArgsConstructor 모두를 자동으로 적용
+      - @Builder : 객체 생성시 여러 필드가 존재할 때 그것의 순서에 의해 생기는 문제나 명시적이지 못한 생성자 여러개에 의해 발생하는 문제를 해결하기 위해 나온 패턴
+        - ex) Test test1 = Test.builder()
+                           .str("test")
+                           .build();
+    - LibraryEvent, Book Entity 예시
+      - ex) LibraryEvent.java
+            @Entity
+            @AllArgsConstructor
+            @NoArgsConstructor
+            @Data
+            @Builder
+            public class LibraryEvent {
+                @Id
+                @GeneratedValue
+                private Integer libraryEventId;
+                @Enumerated(EnumType.STRING)
+                private LibraryEventType libraryEventType;
+                @OneToOne(mappedBy = "libraryEvent", cascade ={CascadeType.ALL})
+                @ToString.Exclude
+                private Book book;
+            }
+      - ex) Book.java
+            @Entity
+            @AllArgsConstructor
+            @NoArgsConstructor
+            @Data
+            @Builder
+            public class Book {
+
+                @Id
+                Integer bookId;
+                String bookName;
+                String bookAuthor;
+
+                @OneToOne
+                @JoinColumn(name="libraryEventId")
+                private LibraryEvent libraryEvent;
+            }
