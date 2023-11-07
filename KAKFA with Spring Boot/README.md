@@ -2,7 +2,13 @@ Abstract
 - Section 1~6 : KAFKA 기본 내용 + CLI
 - Section 7 : Build Spring boot KAFKA Producer
 - Section 8~9 : Unit Testing using JUnit5
-
+- Section 10 : Build Spring boot KAFKA Producer (PUT Method 추가)
+- Section 11 : Important Configurations of KAFKA Producer 
+- Section 12 : Build Spring Boot KAFKA Consumer
+- Section 13 : Consumer Groups and Consumer Offset Management
+- Section 14 : Persisting Library Events in DB - Using H2 InMemory DB
+- Section 15 Skip : Integration Testing using Embedded Kafka - Kafka Consumer
+- Section 16~17 : Error Handling, Retry and Recovery - Kafka Consumer&Producer
 
 Content
 - Section 1~6 : KAFKA 기본 내용 + CLI
@@ -287,3 +293,123 @@ Content
                 @JoinColumn(name="libraryEventId")
                 private LibraryEvent libraryEvent;
             }
+    - CrudRepository : Sping의 JPA tools
+      - CrudRepository를 상속받은 interface를 통해 객체를 만들고 .save로 저장
+      - 밑의 예시 흐름 : Consumer에서 Event 수신 -> Service에 Event처리 함수 호출 -> Event 처리 함수 내에서 ConsumerRecord를 가지고 Event Type을 분리하여 그에 맞는 처리 진행 -> CrudRepository를 상속받은 libraryEventsRepository로 데이터 저장
+      - ex) Repository 코드
+        public interface LibraryEventsRepository extends CrudRepository<LibraryEvent, Integer> { }
+      - ex) Service 코드
+        @Service
+        @Slf4j
+        public class LibraryEventsService {
+
+            @Autowired
+            ObjectMapper objectMapper;
+
+            @Autowired
+            private LibraryEventsRepository libraryEventsRepository;
+
+            public void processLibraryEvent(ConsumerRecord<Integer, String> consumerRecord) throws JsonProcessingException {
+                LibraryEvent libraryEvent = objectMapper.readValue(consumerRecord.value(), LibraryEvent.class);
+                log.info("library Event : {}",libraryEvent);
+
+                switch (libraryEvent.getLibraryEventType()){
+                    case NEW:
+                        save(libraryEvent);
+                        break;
+                    case UPDATE:
+                        validate(libraryEvent);
+                        save(libraryEvent);
+                        break;
+                    default:
+                        log.info("Invalid Library Event Type!");
+                }
+            }
+
+            private void validate(LibraryEvent libraryEvent) {
+                if(libraryEvent.getLibraryEventId()==null){
+                    throw new IllegalArgumentException("Library Event Id is missing!");
+                }
+                Optional<LibraryEvent> libraryEventOptional = libraryEventsRepository.findById(libraryEvent.getLibraryEventId());
+                if(!libraryEventOptional.isPresent()){
+                    throw new IllegalArgumentException("Not a valid library Event {}");
+                }
+                log.info("Validation is successfult for the library Event : {}",libraryEventOptional.get());
+            }
+
+            private void save(LibraryEvent libraryEvent) {
+                libraryEvent.getBook().setLibraryEvent(libraryEvent);
+                libraryEventsRepository.save(libraryEvent);
+                log.info("Successfully Persisted the library Event {}", libraryEvent);
+            }
+        }
+
+      - ex) Consumer 코드
+        @Component
+        @Slf4j
+        public class LibraryEventsConsumer {
+
+            @Autowired
+            private LibraryEventsService libraryEventsService;
+
+            @KafkaListener(topics = {"library-events"})
+            public void onMessage(ConsumerRecord<Integer,String> consumerRecord) throws JsonProcessingException {
+                log.info("ConsumerRecord: {}", consumerRecord);
+                libraryEventsService.processLibraryEvent(consumerRecord);
+            }
+        }
+  - Section 15 Skip : Integration Testing using Embedded Kafka - Kafka Consumer
+  - Section 16~17 : Error Handling, Retry and Recovery - Kafka Consumer&Producer
+    - Custom Error Handler & Custom Retry 
+      - Kafka Consumer Configure에 setCommonErrorHandler()를 통하여 Error Handler 등록 가능
+        - ex) public DefaultErrorHandler errorHandler(){ 
+            var fixedBackOff = new FixedBackOff(1000L, 2);
+            return new DefaultErrorHandler(fixedBackOff);
+          }
+          ...
+          factory.setCommonErrorHandler(errorHandler());
+    - Add a RetryListener to monitor each Retry attempt
+      - errorHandler에 setRetryListeners()를 통해 각 Retry마다 디버깅 가능
+        - ex) public DefaultErrorHandler errorHandler(){ 
+            var fixedBackOff = new FixedBackOff(1000L, 2);
+            var errorHandler =  new DefaultErrorHandler(fixedBackOff);
+            errorHandler.setRetryListeners(((record, ex, deliveryAttempt) -> {
+              log.info("Failed Record in Retry Listener, Exception : {}",ex.getMessage());
+            }));
+          }
+          ...
+          factory.setCommonErrorHandler(errorHandler());
+    - Retry SpecificExceptions using Custom RetryPolicy
+      - 특정 에러들의 Retry 여부를 설정할 수 있음
+        - ex) var exceptionsToIgnoreLst = List.of(
+            IllegalArgumentException.class
+          );
+          var exceptionsToRetryLst = List.of(
+            RecoverableDataAccessException.class
+          );
+          ...
+          exceptionsToIgnoreLst.forEach(errorHandler::addNotRetryableExceptions);
+          exceptionsToRetryLst.forEach(errorHandler::addRetryableExceptions);
+    - Retry Failed Records with ExponentialBackOff
+      - FixedBackOff 아닌 ExponentialBackOff(지수 Backoff. backoff가 지수적 증가)로 할 수 있음
+        - ex) var expBackOff = new ExponentialBackOffWithMaxRetries(2);
+              expBackOff.setInitialInterval(1_000L);
+              expBackOff.setMultiplier(2.0);
+              expBackOff.setMaxInterval(2_000L);
+              var errorHandler =  new DefaultErrorHandler(expBackOff);
+    - Recovery in Kafka Consumer
+      - Approach 1 : Reprocess the failed the record again
+        - Option 1 : Publish the failed message to a Retry Topic. 즉 실패시 재처리 Topic에 put하여 다시 처리하는 방식 (ex. library-events.RETRY Topic)
+          - DeadLetterPublishingRecoverer를 사용하여 recoverer 만들고 DefaultErrorHandler에 넘겨주면 됨
+        - Option 2 : Saved the failed message in a DB and retry with a Scheduler. 재처리 Topic이 아닌 DB에 저장하여 재처리 목록들을 scheduler로 poll하여 재처리하는 방식
+          - @Scheduled annotation을 사용하여 스케줄러 생성 (Spring cron scheduler)
+      - Approach 2 : Discard the Message and move on
+        - Option 1 : Publish the failed record in to DeadLetter Topic
+        - Option 2 : Saved the failed record into a DB
+          - ConsumerRecordRecoverer을 사용하여 recoverer 만들고 DefaultErrorHandler에 넘겨주면 됨
+    
+    - Retry in Kafka Producer 
+      - Broker Not Available와 Min.in.sync.replicas로인한 Retry는 max.block.ms와 retries의 Kafka producer 설정에 따라 알아서 재시도가 이루어짐
+      - 위의 Retry가 실패하였을 경우, 2가지 방법
+        - DB를 이용하여 Scheduler로 재처리하는 방법
+        - Recovery Topic으로 put하고 Kafka Consumer로 get한 뒤 다시 목표 Topic에 Put하는 방법

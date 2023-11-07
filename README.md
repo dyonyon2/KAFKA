@@ -9,3 +9,15 @@
   - Section 8 : KAFKA 확장 API & 실제 사례
   - Section 9 : KAFKA 기업 가이드
   - Section 10 : 고급 KAFKA 토픽 구성
+
+- KAKFA with Spring Boot
+  - Section 1~6 : KAFKA 기본 내용 + CLI
+  - Section 7 : Build Spring boot KAFKA Producer
+  - Section 8~9 : Unit Testing using JUnit5
+  - Section 10 : Build Spring boot KAFKA Producer (PUT Method 추가)
+  - Section 11 : Important Configurations of KAFKA Producer 
+  - Section 12 : Build Spring Boot KAFKA Consumer
+  - Section 13 : Consumer Groups and Consumer Offset Management
+  - Section 14 : Persisting Library Events in DB - Using H2 InMemory DB
+  - Section 15 Skip : Integration Testing using Embedded Kafka - Kafka Consumer
+  - Section 16~17 : Error Handling, Retry and Recovery - Kafka Consumer&Producer
