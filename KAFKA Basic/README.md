@@ -310,23 +310,23 @@
 			```
 			- 2. Create a Consumer
 			```
-			KafkaConsumer<String, String> consumer = new KafkaConsumer<>(properties);
+				KafkaConsumer<String, String> consumer = new KafkaConsumer<>(properties);
 			```
-      - 3. Subscribe to a Topic
-		```
-        consumer.subscribe(Arrays.asList(topic));
-		```
+      		- 3. Subscribe to a Topic
+			```
+				consumer.subscribe(Arrays.asList(topic));
+			```
 			- 4. Poll for Data
 			```
-        while(true){
-          log.info("Polling!");
-          ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
-          for(ConsumerRecord<String, String> record : records){
-            log.info("key : "+record.key()+", value : "+record.value());
-            log.info("Partition : "+record.partition()+", Offset : "+record.offset());
-          }
-        }
-		```
+				while(true){
+				log.info("Polling!");
+				ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
+				for(ConsumerRecord<String, String> record : records){
+					log.info("key : "+record.key()+", value : "+record.value());
+					log.info("Partition : "+record.partition()+", Offset : "+record.offset());
+				}
+				}
+			```
 			- 5. Shutdown Consumer ( hook 등록 -> while 동작 -> 종료 누르기 -> hooking에 걸림 -> consumer wakeup() -> catch 문에 WakeupException에 걸림 -> finally에서 consumer 종료 -> main 종료 -> hooking에 main.join으로 종료 기다림 )
 			```
 				 // Get a reference to the main thread
