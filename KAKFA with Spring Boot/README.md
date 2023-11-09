@@ -43,7 +43,9 @@ Content
   - *** ProducerFactory에서 prop을 만들고 -> KafkaTemplate에서 ProducerFactory 가지고 KafkaTemplate을 만든다. (KafkaTemplate은 Spring Boot에서 Producer)
 
   - KAFKA Topic 자동 생성: 
-    - ex) @Configuration
+    - ex) 
+    ```
+          @Configuration
           public class AutoCreateConfig {
 
               @Value("${spring.kafka.topic}")
@@ -54,8 +56,10 @@ Content
                   return TopicBuilder.name(topic).partitions(3).replicas(1).build();
               }
           }
+          ```
   - KAFKA Producer: 3가지 방식 (동기, 비동기, Record)
     - ex) controller.java 예시
+    ```   
           @RestController
           @Slf4j
           public class LibraryEventsController {
@@ -77,7 +81,9 @@ Content
                   return ResponseEntity.status(HttpStatus.CREATED).body(libraryEvent);
               }
           }
+          ```
     - ex) producer.java 비동기 예시
+    ```   
           public void sendLibraryEvent(LibraryEvent libraryEvent) throws JsonProcessingException {
                 var key= libraryEvent.libraryEventId();
                 var value = objectMapper.writeValueAsString(libraryEvent);
@@ -90,10 +96,12 @@ Content
                     }
                 });
             }
+            ```
       - *** 위 예제에서 completableFuture.whenComplete가 비동기로 진행됨
         1. Blocking call - get metadata about the kafka cluster
         2. Send Message happens - return a CompletableFuture
     - ex) producer.java 동기 예시
+      ```
       public SendResult<Integer, String> sendLibraryEvent_approach2(LibraryEvent libraryEvent) throws JsonProcessingException, ExecutionException, InterruptedException {
           var key= libraryEvent.libraryEventId();
           var value = objectMapper.writeValueAsString(libraryEvent);
@@ -102,8 +110,10 @@ Content
           handleSuccess(key,value,sendResult);
           return sendResult;
       }
+      ```
       - kafkaTemplate.send(topic, key, value)에 get()을 붙히면 Result를 받을 때까지 기다림 (block, 동기)
     - ex) producer.java Record 예시
+    ```
       public CompletableFuture<SendResult<Integer, String>> sendLibraryEvent_approach3(LibraryEvent libraryEvent) throws JsonProcessingException {
           var key= libraryEvent.libraryEventId();
           var value = objectMapper.writeValueAsString(libraryEvent);
@@ -121,11 +131,14 @@ Content
               }
           });
       }
+      ```
       *** Record에 RecordHeader 추가할 수 있음
+      ```
       private ProducerRecord<Integer, String> buildProducerRecord(Integer key, String value) {
           List<Header> recordHeaders = List.of(new RecordHeader("event-source","scanner".getBytes()));
           return new ProducerRecord<>(topic, null, key, value, recordHeaders);
       }
+      ```
 
 - Section 8~9 : Integration/Unit Testing using JUnit5
   - Automated Test
@@ -141,7 +154,9 @@ Content
       - Tools (JUnit, Spock)
   - Integration Test
     - Test combines all the independent layers of your code and make sure that they work as expected in collaboration.
-    - ex) @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+    - ex) 
+    ```
+        @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
           class LibraryEventsControllerIntegrationTest {
 
               @Autowired
@@ -158,15 +173,20 @@ Content
 
               }
           }
+          ```
       - KAFKA를 실제 KAFKA로 테스트를 하지 못하는 경우, EmbeddedKafka사용!
     - ex) EmbeddedKafka를 위한 annotation 추가
+      ```
       @EmbeddedKafka(topics = "library-events")
       @TestPropertySource(properties = {"spring.kafka.producer.bootstrap-servers=${spring.embedded.kafka.brokers}",
               "spring.kafka.admin.properties.bootstrap.servers=${spring.embedded.kafka.brokers}"})
+              ```
   - Unit Test
     - Test the just focuses on a single unit(method)
     - Mocks the external dependencies
-    - ex) @WebMvcTest(LibraryEventsController.class)
+    - ex) 
+    ```
+          @WebMvcTest(LibraryEventsController.class)
           class LibraryEventsControllerUnitTest {
 
               @Autowired
@@ -186,6 +206,7 @@ Content
                   mockMvc.perform(MockMvcRequestBuilders.post("/v1/libraryevent").content(json).contentType(MediaType.APPLICATION_JSON)).andExpect(status().isCreated());
               }
           }
+          ```
   - Section 10 : Build Spring boot KAFKA Producer (PUT Method 추가)
   - Section 11 : Important Configurations of KAFKA Producer 
     - acks : KAFKA가 ack를 보내는 조건.
@@ -261,6 +282,7 @@ Content
                            .build();
     - LibraryEvent, Book Entity 예시
       - ex) LibraryEvent.java
+      ```
             @Entity
             @AllArgsConstructor
             @NoArgsConstructor
@@ -276,7 +298,9 @@ Content
                 @ToString.Exclude
                 private Book book;
             }
+            ```
       - ex) Book.java
+      ```
             @Entity
             @AllArgsConstructor
             @NoArgsConstructor
@@ -293,12 +317,18 @@ Content
                 @JoinColumn(name="libraryEventId")
                 private LibraryEvent libraryEvent;
             }
+            ```
     - CrudRepository : Sping의 JPA tools
       - CrudRepository를 상속받은 interface를 통해 객체를 만들고 .save로 저장
       - 밑의 예시 흐름 : Consumer에서 Event 수신 -> Service에 Event처리 함수 호출 -> Event 처리 함수 내에서 ConsumerRecord를 가지고 Event Type을 분리하여 그에 맞는 처리 진행 -> CrudRepository를 상속받은 libraryEventsRepository로 데이터 저장
       - ex) Repository 코드
-        public interface LibraryEventsRepository extends CrudRepository<LibraryEvent, Integer> { }
+      ```
+        public interface LibraryEventsRepository extends CrudRepository<LibraryEvent, Integer> { 
+
+        }
+        ```
       - ex) Service 코드
+      ```
         @Service
         @Slf4j
         public class LibraryEventsService {
@@ -343,8 +373,9 @@ Content
                 log.info("Successfully Persisted the library Event {}", libraryEvent);
             }
         }
-
+```
       - ex) Consumer 코드
+      ```
         @Component
         @Slf4j
         public class LibraryEventsConsumer {
@@ -358,19 +389,25 @@ Content
                 libraryEventsService.processLibraryEvent(consumerRecord);
             }
         }
+        ```
   - Section 15 Skip : Integration Testing using Embedded Kafka - Kafka Consumer
   - Section 16~17 : Error Handling, Retry and Recovery - Kafka Consumer&Producer
     - Custom Error Handler & Custom Retry 
       - Kafka Consumer Configure에 setCommonErrorHandler()를 통하여 Error Handler 등록 가능
-        - ex) public DefaultErrorHandler errorHandler(){ 
+        - ex) 
+        ```
+          public DefaultErrorHandler errorHandler(){ 
             var fixedBackOff = new FixedBackOff(1000L, 2);
             return new DefaultErrorHandler(fixedBackOff);
           }
           ...
           factory.setCommonErrorHandler(errorHandler());
+          ```
     - Add a RetryListener to monitor each Retry attempt
       - errorHandler에 setRetryListeners()를 통해 각 Retry마다 디버깅 가능
-        - ex) public DefaultErrorHandler errorHandler(){ 
+        - ex) 
+        ```
+          public DefaultErrorHandler errorHandler(){ 
             var fixedBackOff = new FixedBackOff(1000L, 2);
             var errorHandler =  new DefaultErrorHandler(fixedBackOff);
             errorHandler.setRetryListeners(((record, ex, deliveryAttempt) -> {
@@ -379,9 +416,12 @@ Content
           }
           ...
           factory.setCommonErrorHandler(errorHandler());
+          ```
     - Retry SpecificExceptions using Custom RetryPolicy
       - 특정 에러들의 Retry 여부를 설정할 수 있음
-        - ex) var exceptionsToIgnoreLst = List.of(
+        - ex) 
+        ```
+          var exceptionsToIgnoreLst = List.of(
             IllegalArgumentException.class
           );
           var exceptionsToRetryLst = List.of(
@@ -390,13 +430,17 @@ Content
           ...
           exceptionsToIgnoreLst.forEach(errorHandler::addNotRetryableExceptions);
           exceptionsToRetryLst.forEach(errorHandler::addRetryableExceptions);
+          ```
     - Retry Failed Records with ExponentialBackOff
       - FixedBackOff 아닌 ExponentialBackOff(지수 Backoff. backoff가 지수적 증가)로 할 수 있음
-        - ex) var expBackOff = new ExponentialBackOffWithMaxRetries(2);
+        - ex) 
+        ```
+              var expBackOff = new ExponentialBackOffWithMaxRetries(2);
               expBackOff.setInitialInterval(1_000L);
               expBackOff.setMultiplier(2.0);
               expBackOff.setMaxInterval(2_000L);
               var errorHandler =  new DefaultErrorHandler(expBackOff);
+              ```
     - Recovery in Kafka Consumer
       - Approach 1 : Reprocess the failed the record again
         - Option 1 : Publish the failed message to a Retry Topic. 즉 실패시 재처리 Topic에 put하여 다시 처리하는 방식 (ex. library-events.RETRY Topic)

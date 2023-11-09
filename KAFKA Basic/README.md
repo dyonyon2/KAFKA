@@ -298,17 +298,24 @@
 	- Consumer
 		- Java API - Basics
 			- 1. Create Consumer Properties
+			```
         Properties properties = new Properties();
         properties.setProperty("bootstrap.servers","localhost:9092");
         properties.setProperty("key.deserializer", StringDeserializer.class.getName());
         properties.setProperty("value.deserializer",StringDeserializer.class.getName());
         properties.setProperty("group.id",groupId);
         properties.setProperty("auto.offset.reset","earliest"); // none / earliest / latest
+		``
 			- 2. Create a Consumer
+			```
         KafkaConsumer<String, String> consumer = new KafkaConsumer<>(properties);
+		```
       - 3. Subscribe to a Topic
+	  ```
         consumer.subscribe(Arrays.asList(topic));
+		```
 			- 4. Poll for Data
+			```
         while(true){
           log.info("Polling!");
           ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
@@ -317,7 +324,9 @@
             log.info("Partition : "+record.partition()+", Offset : "+record.offset());
           }
         }
+		```
 			- 5. Shutdown Consumer ( hook 등록 -> while 동작 -> 종료 누르기 -> hooking에 걸림 -> consumer wakeup() -> catch 문에 WakeupException에 걸림 -> finally에서 consumer 종료 -> main 종료 -> hooking에 main.join으로 종료 기다림 )
+			```
 				 // Get a reference to the main thread
         final Thread mainThread = Thread.currentThread();
 
@@ -334,7 +343,7 @@
                 }
             }
         });
-				...
+				..
 				try {
           consumer.subscribe(Arrays.asList(topic));
 
@@ -356,7 +365,7 @@
           consumer.close(); // close the consumer, this will also commit offsets
           log.info("The consumer is now gracefully shut down");
         }
-
+		```
 		- Java API - Consumer Groups and Partition Rebalance
 			- Partition Rebalance 
 				- 같은 토픽, 같은 Consumer Group내에 속한 Consumer가 추가/제거 된다면 Partition을 재분배하는 리밸런스(Rebalance)가 일어난다.
@@ -524,22 +533,31 @@
     - Exactly Once : Can be achieved for KAFKA => KAFKA workflows using the Transactional API(easy with KAFKA Streams API). For KAFKA => Sink workflows, use an idempotent consumer
   - Consumer 멱등 처리
     - 고유한 ID를 두어 처리할 때 사용하면 됨. 
-    - ex) String id = record.topic()+"_"+record.partition()+"_"+record.offset();
+    - ex) 
+	```
+	String id = record.topic()+"_"+record.partition()+"_"+record.offset();
+	```
   - Consumer Offset Commit Strategies
     - Strategues:
       - enable.auto.commit = true & synchronous processing of batches
-        - ex) while(true){
+        - ex) 
+			```
+			while(true){
         	  List<Records> batch = consumer.poll(Duration.ofMillis(100));
         	  doSomethingSynchronous(batch)
         	}
+			```
       - enable.auto.commit = false & manual commit of offset
-      	- ex) while(true){
+      	- ex) 
+			```
+			while(true){
         	  batch += consumer.poll(Duration.ofMillis(100));
         	  if isReady(batch){
 	        	  doSomethingSynchronous(batch)
 	        	  consumer.commitAsync();
 	        	}
         	}
+			```
       - enable.auto.commit = false & storing offsets externally
         - Need to assign partitions to consumers at launch manually using .seek() API
         - Need to model and store offsets in DB.
@@ -623,7 +641,9 @@
  			- One record at a time processing
  			- Works for any application size
  		- 아래와 같이 Stream 처리 Process를 만들고 Topology를 구성하고 KAFKA Streams를 통해 Stream 처리할 수 있는 라이브러리.
- 	    - ex) StreamsBuilder builder = new StreamsBuilder();
+ 	    - ex) 
+		```
+				StreamsBuilder builder = new StreamsBuilder();
 		        KStream<String, String> changeJsonStream = builder.stream(INPUT_TOPIC);
 
 		        BotCountStreamBuilder botCountStreamBuilder = new BotCountStreamBuilder(changeJsonStream);
@@ -639,8 +659,10 @@
 		        LOGGER.info("Topology: {}", appTopology.describe());
 		        KafkaStreams streams = new KafkaStreams(appTopology, properties);
 		        streams.start();  
-
-		  - ex) public void setup() {
+```
+		  - ex) 
+		  ```
+		  		public void setup() {
 			        this.inputStream
 			                .mapValues(changeJson -> {
 			                    try {
@@ -666,6 +688,7 @@
 			                })
 			                .to(BOT_COUNT_TOPIC);
 			    }
+				```
   - KAFKA Schema Registry Introduction
     - KAFKA는 Producer로부터 Byte를 받아서 Consumer에게 publish함. 이 과정에서 데이터 Verification이 없음.
     - Producer가 잘못된 데이터를 보내거나, 필드 이름이 변경되었거나, 데이터 포맷이 변경되었거나... 등등의 상황에서 Consumer는 Error가 발생함.
