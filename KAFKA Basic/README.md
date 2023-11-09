@@ -310,10 +310,10 @@
 			```
 			- 2. Create a Consumer
 			```
-        KafkaConsumer<String, String> consumer = new KafkaConsumer<>(properties);
-		```
+			KafkaConsumer<String, String> consumer = new KafkaConsumer<>(properties);
+			```
       - 3. Subscribe to a Topic
-	  ```
+		```
         consumer.subscribe(Arrays.asList(topic));
 		```
 			- 4. Poll for Data
