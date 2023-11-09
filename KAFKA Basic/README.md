@@ -330,44 +330,44 @@
 			- 5. Shutdown Consumer ( hook 등록 -> while 동작 -> 종료 누르기 -> hooking에 걸림 -> consumer wakeup() -> catch 문에 WakeupException에 걸림 -> finally에서 consumer 종료 -> main 종료 -> hooking에 main.join으로 종료 기다림 )
 			```
 				 // Get a reference to the main thread
-        final Thread mainThread = Thread.currentThread();
+				final Thread mainThread = Thread.currentThread();
 
-        // Adding the shutdown hook
-        Runtime.getRuntime().addShutdownHook(new Thread(){
-            public void run(){
-                log.info("Detected a shutdown, let's exit by calling consumer.wakeup()...");
-                consumer.wakeup();
-                // join the main thread to allow the execution of the code in the main thread
-                try {
-                    mainThread.join();
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        });
+				// Adding the shutdown hook
+				Runtime.getRuntime().addShutdownHook(new Thread(){
+					public void run(){
+						log.info("Detected a shutdown, let's exit by calling consumer.wakeup()...");
+						consumer.wakeup();
+						// join the main thread to allow the execution of the code in the main thread
+						try {
+							mainThread.join();
+						} catch (InterruptedException e) {
+							throw new RuntimeException(e);
+						}
+					}
+				});
 				..
 				try {
-          consumer.subscribe(Arrays.asList(topic));
+					consumer.subscribe(Arrays.asList(topic));
 
-          while (true) {
-            log.info("Polling!");
+					while (true) {
+						log.info("Polling!");
 
-            ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
+						ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
 
-            for (ConsumerRecord<String, String> record : records) {
-              log.info("key : " + record.key() + ", value : " + record.value());
-              log.info("Partition : " + record.partition() + ", Offset : " + record.offset());
-            }
-          }
-        } catch (WakeupException e) {
-          log.info("Consumer is starting to shut down");
-        } catch (Exception e){
-          log.error("Unexpected exception in the consumer", e);
-        } finally {
-          consumer.close(); // close the consumer, this will also commit offsets
-          log.info("The consumer is now gracefully shut down");
-        }
-		```
+						for (ConsumerRecord<String, String> record : records) {
+						log.info("key : " + record.key() + ", value : " + record.value());
+						log.info("Partition : " + record.partition() + ", Offset : " + record.offset());
+						}
+					}
+				} catch (WakeupException e) {
+				log.info("Consumer is starting to shut down");
+				} catch (Exception e){
+				log.error("Unexpected exception in the consumer", e);
+				} finally {
+				consumer.close(); // close the consumer, this will also commit offsets
+				log.info("The consumer is now gracefully shut down");
+				}
+			```
 		- Java API - Consumer Groups and Partition Rebalance
 			- Partition Rebalance 
 				- 같은 토픽, 같은 Consumer Group내에 속한 Consumer가 추가/제거 된다면 Partition을 재분배하는 리밸런스(Rebalance)가 일어난다.
