@@ -207,7 +207,7 @@
   		- kafka-console-producer.sh --bootstrap-server localhost:9092 --topic first_topic --producer-property acks=all
   		- 없는 토픽에 Produce하면. Timeout or 토픽 자동 생성 후 Leader가 없다는 Error -> 토픽 자동 생성 이후 리더 선정되어 토픽 사용 가능 (But 토픽 자동 생성은 하지 않는 것을 권장)
   			- kafka-console-producer.sh --bootstrap-server localhost:9092 --topic new_topic
-  		- > config/server.properties에 num.partitions에 자동 생성시 default partition 개수 설정 가능
+  		- -> config/server.properties에 num.partitions에 자동 생성시 default partition 개수 설정 가능
   	- Produce with keys
   		- kafka-console-producer.sh --bootstrap-server localhost:9092 --topic first_topic --property parse.key=true --property key.separator=:
   		- property 옵션으로 key parsing을 활성화하고 key 구분자를 준 뒤, produce 할 때 키:값 의 형태로 입력하면 키와 값이 parsing되어 Kafka에 produce 됨.
@@ -275,7 +275,8 @@
 	        producer.close();
     - Java API - Callbacks
     	- producer.send(데이터, 콜백함수) 를 통해 metadata, error를 받아서 확인할 수 있음.
-    	  - producer.send(producerRecord, new Callback() {
+    	  - ```
+		  	producer.send(producerRecord, new Callback() {
             @Override
             public void onCompletion(RecordMetadata metadata, Exception e) {
               // executes every time a record successfully sent or an exception is thrown
@@ -291,6 +292,7 @@
               }
             }
           });
+		  ```
       - 기본 Partitional.class는 null이며, default는 스티키 파티셔너(Sticky Partitioner)이다.
         - Sticky Partitioner : 각 데이터마다 따로 보내는 것이 아니라, 빠른 시간내에 들어온 데이터들은 batching하여 하나로 묶어서 보내는 방식
     - Java API - keys
@@ -299,13 +301,13 @@
 		- Java API - Basics
 			- 1. Create Consumer Properties
 			```
-        Properties properties = new Properties();
-        properties.setProperty("bootstrap.servers","localhost:9092");
-        properties.setProperty("key.deserializer", StringDeserializer.class.getName());
-        properties.setProperty("value.deserializer",StringDeserializer.class.getName());
-        properties.setProperty("group.id",groupId);
-        properties.setProperty("auto.offset.reset","earliest"); // none / earliest / latest
-		``
+				Properties properties = new Properties();
+				properties.setProperty("bootstrap.servers","localhost:9092");
+				properties.setProperty("key.deserializer", StringDeserializer.class.getName());
+				properties.setProperty("value.deserializer",StringDeserializer.class.getName());
+				properties.setProperty("group.id",groupId);
+				properties.setProperty("auto.offset.reset","earliest"); // none / earliest / latest
+			```
 			- 2. Create a Consumer
 			```
         KafkaConsumer<String, String> consumer = new KafkaConsumer<>(properties);
